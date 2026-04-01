@@ -1,6 +1,8 @@
 import os
 from typing import BinaryIO
 
+# Notes: Think about using a dict counter
+
 
 def find_chunk_boundaries(
     file: BinaryIO,
