@@ -97,12 +97,12 @@ if __name__ == "__main__":
     
     
     # I'm gonna turn off the profiler for now
-    # profiler.run('main(**vars(args))')
-    # stats = pstats.Stats(profiler)
-    # stats.sort_stats('cumtime')
-    # stats.print_stats(20)
+    profiler.run('main(**vars(args))')
+    stats = pstats.Stats(profiler)
+    stats.sort_stats('cumtime')
+    stats.print_stats(50)
     
-    main(**vars(args))
+    # main(**vars(args))
     
     
     mem_in_bytes = process.memory_info().rss

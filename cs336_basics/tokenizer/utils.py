@@ -8,6 +8,8 @@ class BytePair:
     def __init__(self, pair, count):
         self.pair = pair
         self.count = count
+        
+        # Use ORD
     
     # Override the "less than" operator for heapq
     def __lt__(self, other):

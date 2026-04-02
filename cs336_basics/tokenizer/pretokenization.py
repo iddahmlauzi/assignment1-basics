@@ -4,9 +4,11 @@ from collections import Counter
 from functools import partial
 from typing import BinaryIO
 from multiprocessing import Pool
+from tqdm import tqdm
 
 # Better to use re.ignorecase for contractions
-PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+# Precompile the pattern
+RE_PAT = re.compile(br"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
 
 def find_chunk_boundaries(
     file: BinaryIO,
@@ -57,7 +59,7 @@ def find_chunk_boundaries(
 
 def pretokenize_chunk(bounds: tuple[int, int],
                       input_path: str | os.PathLike,
-                      special_tokens: list[str]) -> dict[tuple[bytes, ...], int]:
+                      special_tokens: list[bytes]) -> dict[tuple[bytes, ...], int]:
     """
     Pretokenizes the given chunk from the input corpus
     Args:
@@ -72,16 +74,17 @@ def pretokenize_chunk(bounds: tuple[int, int],
     start, end = bounds
     with open(input_path, "rb") as f:
         f.seek(start)
-        chunk = f.read(end - start).decode("utf-8", errors="ignore")
+        chunk = f.read(end - start)
         # Strip the special tokens from the corpus so no merging occurs across special token boundaries
-        splits = re.split("|".join([re.escape(special_token) for special_token in special_tokens]), chunk)
+        splits = re.splititer(b"|".join([re.escape(special_token.encode('utf-8')) for special_token in special_tokens]), chunk)
         pretokens = Counter()
         for text in splits:
-            matches = re.finditer(PAT, text)
+            matches = RE_PAT.finditer(text)
             for match in matches:
                 # Use the bytes representation of the token
                 # A 3-byte character such as こ should be separated into 3 separate butes
-                token_bytes = tuple(bytes([b]) for b in match.group().encode("utf-8"))
+                # token_bytes = tuple(bytes([b]) for b in match.group().encode("utf-8"))
+                token_bytes = tuple(bytes([b]) for b in match.group())
                 pretokens[token_bytes] += 1
             
     return pretokens
@@ -108,8 +111,10 @@ def pretokenize(input_path: str | os.PathLike,
             (b'w', b'o', b'r', b'l', b'd'): 3,
             }
     """
+    from time import time
+    start_time = time()
     with open(input_path, "rb") as f:
-        num_processes = os.cpu_count() - 3
+        num_processes = 4
         boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
         bounds =  zip(boundaries[:-1], boundaries[1:])
         
@@ -118,8 +123,10 @@ def pretokenize(input_path: str | os.PathLike,
         pretoken_dicts = p.map(pretokenize_fn, bounds)
     
     pretokens = sum(pretoken_dicts, Counter())
+    time_elapsed = time() - start_time
+    print(f"Pretokenization took {time_elapsed:.2f} s")
     return pretokens
-
+ 
 
 
         
