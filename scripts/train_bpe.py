@@ -6,7 +6,7 @@ import cProfile
 import pstats
 import psutil
 import time
-from cs336_basics.tokenizer import pretokenize, train_bpe_tokenizer
+from cs336_basics.tokenization import pretokenize, train_bpe_tokenizer
 from tests.common import gpt2_bytes_to_unicode
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
