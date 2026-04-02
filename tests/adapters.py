@@ -590,7 +590,7 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    # TODO: Rewrite this after doing the parallelization
+    
     pretokens = pretokenize(input_path, special_tokens)
     vocab, merges = train_bpe_tokenizer(pretokens, vocab_size, special_tokens)
     return vocab, merges

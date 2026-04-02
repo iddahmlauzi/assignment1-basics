@@ -4,6 +4,8 @@ import os
 import json
 import cProfile
 import pstats
+import psutil
+import time
 from cs336_basics.tokenizer import pretokenize, train_bpe_tokenizer
 from tests.common import gpt2_bytes_to_unicode
 
@@ -20,8 +22,6 @@ DATASETS = {
             False: "owt_train.txt"
         }
 }
-
-
 
 def render(token_bytes: bytes) -> str:
     """
@@ -54,7 +54,7 @@ def main(dataset: str, vocab_size: int, debug: bool):
     Args:
         dataset (str): Which dataset to train BPE tokenizer on (either TinyStories or OpenWebText)
         vocab_size (int): Total number of items in the tokenizer's vocabulary (including special tokens).
-        debug (bool): In debug mode, we downscale the training
+        debug (bool): In debug mode, we downscale the training (i.e. we use the smaller validation set)
     """
     filename = DATASETS[dataset][debug]
     input_path = PROJECT_ROOT/ "data" / filename
@@ -63,13 +63,10 @@ def main(dataset: str, vocab_size: int, debug: bool):
         raise FileNotFoundError(f"Could not find the dataset at {input_path}")
     
     print(f"Training on {dataset}, (Debug: {debug})")
-    print(f"Target vocan size: {vocab_size}")
-    
-    # This is a rough fix for now just to test it
-    # TODO: rewrite this after fixing the parallelization
+    print(f"Target vocab size: {vocab_size}")
+
     special_tokens = ["<|endoftext|>"]
-    corpus = open(input_path, encoding='utf-8').read()
-    pretokens = pretokenize(corpus, special_tokens)
+    pretokens = pretokenize(input_path, special_tokens)
     vocab, merges = train_bpe_tokenizer(pretokens, vocab_size, special_tokens)
     save_name = f"train-bpe-{dataset}"
     if debug:
@@ -88,8 +85,33 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     profiler = cProfile.Profile()
-    profiler.run('main(**vars(args))')
     
-    stats = pstats.Stats(profiler)
-    stats.sort_stats('cumtime')
-    stats.print_stats(20)
+    
+    # Keep track of memory
+    process = psutil.Process(os.getpid())
+    mem_in_bytes = process.memory_info().rss
+    mem_before = mem_in_bytes / (1024 ** 2)
+    
+    # Keep track of time
+    start_time = time.time()
+    
+    
+    # I'm gonna turn off the profiler for now
+    # profiler.run('main(**vars(args))')
+    # stats = pstats.Stats(profiler)
+    # stats.sort_stats('cumtime')
+    # stats.print_stats(20)
+    
+    main(**vars(args))
+    
+    
+    mem_in_bytes = process.memory_info().rss
+    mem_after = mem_in_bytes / (1024 ** 2)
+    end_time = time.time()
+    
+    mem_used = mem_after - mem_before
+    run_time = end_time - start_time
+    
+    print(f"Memory used: {mem_used:.2f} MiB")
+    print(f"Total Run time: {run_time} seconds")
+    

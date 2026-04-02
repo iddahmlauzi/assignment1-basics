@@ -1,6 +1,9 @@
 import regex as re
 import os
+from collections import Counter
+from functools import partial
 from typing import BinaryIO
+from multiprocessing import Pool
 
 # Better to use re.ignorecase for contractions
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
@@ -52,21 +55,34 @@ def find_chunk_boundaries(
     return sorted(set(chunk_boundaries))
 
 
-def pretokenize_chunk(corpus: str ,special_tokens: list[str]) -> dict[tuple[bytes, ...], int]:
+def pretokenize_chunk(bounds: tuple[int, int],
+                      input_path: str | os.PathLike,
+                      special_tokens: list[str]) -> dict[tuple[bytes, ...], int]:
     """
-    Pretokenizes one chunk: Used in Multi-processing
+    Pretokenizes the given chunk from the input corpus
+    Args:
+        bounds: tuple[int, int]: the start, end boundaries of the chunk to pretokenize
+        input_path (str | os.PathLike): Path to BPE tokenizer training data.
+        special_tokens (list[str]): A list of string special tokens to be added to the tokenizer vocabulary.
+            These strings will never be split into multiple tokens, and will always be kept as a single token.
+    Returns:
+        pretokens (dict[tuple[bytes, ...], int]):
+            A Counter mapping each pre-token to the number of times it appears in the corpus. 
     """
-    
-    # Strip the special tokens from the corpus so no merging occurs across special token boundaries
-    splits = re.split("|".join([re.escape(special_token) for special_token in special_tokens]), corpus)
-    pretokens = {}
-    for text in splits:
-        matches = re.finditer(PAT, text)
-        for match in matches:
-            # Use the bytes representation of the token
-            # A 3-byte character such as こ should be separated into 3 separate butes
-            token_bytes = tuple(bytes([b]) for b in match.group().encode("utf-8"))
-            pretokens[token_bytes] = pretokens.get(token_bytes, 0) + 1
+    start, end = bounds
+    with open(input_path, "rb") as f:
+        f.seek(start)
+        chunk = f.read(end - start).decode("utf-8", errors="ignore")
+        # Strip the special tokens from the corpus so no merging occurs across special token boundaries
+        splits = re.split("|".join([re.escape(special_token) for special_token in special_tokens]), chunk)
+        pretokens = Counter()
+        for text in splits:
+            matches = re.finditer(PAT, text)
+            for match in matches:
+                # Use the bytes representation of the token
+                # A 3-byte character such as こ should be separated into 3 separate butes
+                token_bytes = tuple(bytes([b]) for b in match.group().encode("utf-8"))
+                pretokens[token_bytes] += 1
             
     return pretokens
 
@@ -93,16 +109,16 @@ def pretokenize(input_path: str | os.PathLike,
             }
     """
     with open(input_path, "rb") as f:
-        num_processes = 4
+        num_processes = os.cpu_count() - 3
         boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
-
-        # The following is a serial implementation, but you can parallelize this
-        # by sending each start/end pair to a set of processes.
-        for start, end in zip(boundaries[:-1], boundaries[1:]):
-            f.seek(start)
-            chunk = f.read(end - start).decode("utf-8", errors="ignore")
-            # Run pre-tokenization on your chunk and store the counts for each pre-token
-            # So basically, I need to do pool.map(pretokenize_chunk, )
+        bounds =  zip(boundaries[:-1], boundaries[1:])
+        
+    with Pool(num_processes) as p:
+        pretokenize_fn = partial(pretokenize_chunk, input_path=input_path, special_tokens=special_tokens)
+        pretoken_dicts = p.map(pretokenize_fn, bounds)
+    
+    pretokens = sum(pretoken_dicts, Counter())
+    return pretokens
 
 
 
