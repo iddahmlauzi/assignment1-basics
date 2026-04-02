@@ -127,6 +127,7 @@ def _encode_chunk(bounds: tuple[int, int],
         # Special tokens can be found in vocab and added to ids directly
         if text in special_tokens:
             ids.append(vocab_map[text])
+            continue
         # Otherwise, we need to split the text into its pretokens
         for match in RE_PAT.finditer(text):
             pretoken_bytes = match.group()
@@ -141,20 +142,22 @@ class Tokenizer:
     def __init__(self, vocab: dict[int, bytes], merges: list[tuple[bytes, bytes]], special_tokens: list[str] | None = None):
         
         self.vocab = vocab
-        
-        # Support user provided special tokens (appending them to the vocabulary if they aren’t already there)
-        if special_tokens:
-            self.special_tokens = {s.encode("utf-8") for s in special_tokens}
-            for token in special_tokens:
-                if token not in vocab:
-                    vocab[len(vocab)] = token
-                    
-        self.merges = merges # dont think I need to store this anymore
-        self.special_tokens = {}
-        self.num_processes = 4
-        
         # Make an inverted vocabulary dictionary so we can get the token IDs more efficiently
         self.vocab_map = {v: k for k, v in self.vocab.items()}
+        
+        self.special_tokens = set()
+        if special_tokens:
+            self.special_tokens = {s.encode("utf-8") for s in special_tokens}
+            # Support user provided special tokens (appending them to the vocabulary if they aren’t already there)
+            for token in self.special_tokens:
+                if token not in self.vocab_map:
+                    token_id = len(self.vocab)
+                    self.vocab[token_id] = token
+                    self.vocab_map[token] = token_id
+                    
+        self.merges = merges # dont think I need to store this anymore
+        self.num_processes = 4
+        
         self.rank_map = {}
         # Use an index to map each merged byte pair to the index it occurs in merges
         for i, merge in enumerate(merges):
@@ -165,24 +168,32 @@ class Tokenizer:
     def from_files(cls, vocab_filepath: str, merges_filepath: str, special_tokens: list[str] | None = None):
         """
         Class method that constructs and returns a Tokenizer from a serialized vocabulary and list of merges
+        # This utility is taken from the test_tokenizer file (though it seems we don't test it)
         """
         gpt2_byte_decoder = {v: k for k, v in gpt2_bytes_to_unicode().items()}
-        with open(merges_filepath, encoding="utf-8") as f:
-            gpt2_merges = [tuple(line.rstrip().split(" ")) for line in f]
-            merges = [
-                (
-                    bytes([gpt2_byte_decoder[token] for token in merge_token_1]),
-                    bytes([gpt2_byte_decoder[token] for token in merge_token_2]),
-                )
-                for merge_token_1, merge_token_2 in gpt2_merges
-            ]
-            
         with open(vocab_filepath, encoding="utf-8") as f:
             gpt2_vocab = json.load(f)
-            vocab = {
-                gpt2_vocab_index: bytes([gpt2_byte_decoder[token] for token in gpt2_vocab_item])
-                for gpt2_vocab_item, gpt2_vocab_index in gpt2_vocab.items()
-            }
+            
+        vocab = {
+        gpt2_vocab_index: bytes([gpt2_byte_decoder[token] for token in gpt2_vocab_item])
+        for gpt2_vocab_item, gpt2_vocab_index in gpt2_vocab.items()
+        }
+
+        gpt2_merges = []
+        with open(merges_filepath) as f:
+            for line in f:
+                cleaned_line = line.rstrip()
+                if cleaned_line and len(cleaned_line.split(" ")) == 2:
+                    gpt2_merges.append(tuple(cleaned_line.split(" ")))
+                    
+        merges = [
+            (
+                bytes([gpt2_byte_decoder[token] for token in merge_token_1]),
+                bytes([gpt2_byte_decoder[token] for token in merge_token_2]),
+            )
+            for merge_token_1, merge_token_2 in gpt2_merges
+        ]
+            
         return cls(vocab=vocab, merges=merges, special_tokens=special_tokens)
     
     def encode(self, text: str) -> list[int]:
@@ -201,6 +212,7 @@ class Tokenizer:
             # tokens as well when matching
             pattern = b"(" + b"|".join(tokens) + b")"
             split_pat = re.compile(pattern)
+            
             
         # Step 2: Dispatch (start, end) tuples to a worker function
         worker_fn = partial(_encode_chunk, 
@@ -221,7 +233,32 @@ class Tokenizer:
         lazily yields token IDs. This is required for memory-efficient tokenization of large files 
         that we cannot directly load into memory.
         """
-        raise NotImplementedError
+        
+        # Precompile the pattern to split text at each special token
+        split_pat = None
+        if self.special_tokens:
+            # Sort by length DESCENDING to avoid prefix matching issues
+            sorted_tokens = sorted(self.special_tokens, key=len, reverse=True)
+            tokens = (re.escape(t) for t in sorted_tokens)
+            # We add the parenthesis to make a capturing group --> So we capture the speicial
+            # tokens as well when matching
+            pattern = b"(" + b"|".join(tokens) + b")"
+            split_pat = re.compile(pattern)
+            
+        
+        for text in iterable:
+            # Find the chunk boundaries
+            data = text.encode("utf-8")
+            bounds = (0, len(data))
+            ids = _encode_chunk(bounds=bounds, 
+                                data=data, 
+                                split_pat=split_pat, 
+                                special_tokens=self.special_tokens, 
+                                rank_map=self.rank_map, 
+                                vocab_map=self.vocab_map)
+            yield from ids 
+    
+        
     
     def decode(self, ids: list[int]) -> str:
         """ Decode a sequence of token IDs into text.""" 
