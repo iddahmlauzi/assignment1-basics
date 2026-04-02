@@ -124,7 +124,7 @@ def pretokenize(input_path: str | os.PathLike,
     
     # Automatically set the number of processes
     # num_processes = os.cpu_count() - 2
-    num_processes = 4
+    num_processes = 100
     
     # Pre-compile the special token splitter once
     split_pat = re.compile(b"|".join([re.escape(special_token.encode('utf-8')) for special_token in special_tokens]))

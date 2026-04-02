@@ -1,53 +1,8 @@
 import heapq
 from .utils import BytePair
 
-# Better to have a list
-# SO imagine this: for the index
-# You map each tuple
-# to a set of the indices
-# Then instead of storing a pretokens dict
-# You store a list of tuples
-# containing the pretoken 
-# And its count
-# So maybe
-# SO right now, I have
-# the pretokens dict
-# Inde which is a dict of pair -> set of pretokens
-# dict with pair counts then heap --> and Marcel was saying this should just be my heap??
-# It cant be my heap cause my heap has (count, pair)
-# Let's think about this
-# s = 'こ'
-# bytes_s = s.encode("utf-8")
-# b'\xe3\x81\x93
-# This is joined bytes yeah
-# [b for b in bytes_s] (using an iterator turns each byte into the corresponding number)
-# [227, 129, 147]
-# And then if we want the bytes, we need to turn that back
-# [bytes([b]) for b in bytes_s]
-# [b'\xe3', b'\x81', b'\x93']
-# Cool cool cool
-# So the first thing is the concept of comparing lexicographically 
-# >>> s = b'BA'
-# >>> t = b'B'
-# >>> [b for b in s]
-# [66, 65]
-# >>> [b for b in t]
-# [66]
-# >>> [b for b in s] > [b for b in t]
-# True
-# So what this is telling me is that if 
-# I need to think about this because we basically work with bytes
-# But if I want good min heap behavior
-# Then I basically have to mind what I push onto the heap
-# When I have a pair
-# I need to say 
-# [-b for b in string]
-# This will give me integer values
-# Then when I dequeue from the heap
-# I say
-# Think about this later --> seems like something to optimize later 
-# On tinystories rn, pretokenization takes 366 seconds and then the other 10 seconds are in merge so the bulk is stll in pretokenization
-
+# TODO: Figure out how to not use the custom Bytes object. Need to figure out how to do lexicographically greater sorting 
+# TODO: Store a list of (Pretoken, count) tuples. Index should map pair to a set of the indices of the relevant pretokens (can use list instead of set perhaps cause if we store the indices then havng stale entries shouldnt have as much memory overhead...)
 
 
 def merge(
