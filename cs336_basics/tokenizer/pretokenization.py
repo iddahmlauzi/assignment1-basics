@@ -5,6 +5,7 @@ from functools import partial
 from typing import BinaryIO
 from multiprocessing import Pool
 from tqdm import tqdm
+import mmap
 
 # Better to use re.ignorecase for contractions
 # Precompile the pattern
@@ -59,7 +60,8 @@ def find_chunk_boundaries(
 
 def pretokenize_chunk(bounds: tuple[int, int],
                       input_path: str | os.PathLike,
-                      special_tokens: list[bytes]) -> dict[tuple[bytes, ...], int]:
+                      special_tokens: list[bytes],
+                      split_pat) -> dict[tuple[bytes, ...], int]:
     """
     Pretokenizes the given chunk from the input corpus
     Args:
@@ -67,27 +69,33 @@ def pretokenize_chunk(bounds: tuple[int, int],
         input_path (str | os.PathLike): Path to BPE tokenizer training data.
         special_tokens (list[str]): A list of string special tokens to be added to the tokenizer vocabulary.
             These strings will never be split into multiple tokens, and will always be kept as a single token.
+        split_pat: precompiled regex to split
     Returns:
         pretokens (dict[tuple[bytes, ...], int]):
             A Counter mapping each pre-token to the number of times it appears in the corpus. 
     """
     start, end = bounds
+    raw_counts = Counter()
     with open(input_path, "rb") as f:
-        f.seek(start)
-        chunk = f.read(end - start)
+        # Trying to make code faster haha
+        mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+        chunk = memoryview(mm)[start: end]
         # Strip the special tokens from the corpus so no merging occurs across special token boundaries
-        splits = re.splititer(b"|".join([re.escape(special_token.encode('utf-8')) for special_token in special_tokens]), chunk)
-        pretokens = Counter()
-        for text in splits:
-            matches = RE_PAT.finditer(text)
-            for match in matches:
+        for text in  split_pat.splititer(chunk):
+            if not text:
+                continue
+            for match in RE_PAT.finditer(text):
                 # Use the bytes representation of the token
-                # A 3-byte character such as こ should be separated into 3 separate butes
-                # token_bytes = tuple(bytes([b]) for b in match.group().encode("utf-8"))
-                token_bytes = tuple(bytes([b]) for b in match.group())
-                pretokens[token_bytes] += 1
-            
-    return pretokens
+                # A 3-byte character such as こ should be separated into 3 separate bytes
+                # This should be faster than a python comprehension cause it uses C
+                raw_counts[match.group()] += 1
+    
+    # Final transformation: Convert unique bytes to tuples of individual bytes.
+    # We do this only once per unique token to save massive overhead.
+    return {
+        tuple(memoryview(token).cast('c')): count 
+        for token, count in raw_counts.items()
+    }
 
 
 def pretokenize(input_path: str | os.PathLike,
@@ -113,16 +121,27 @@ def pretokenize(input_path: str | os.PathLike,
     """
     from time import time
     start_time = time()
+    
+    # Automatically set the number of processes
+    # num_processes = os.cpu_count() - 2
+    num_processes = 4
+    
+    # Pre-compile the special token splitter once
+    split_pat = re.compile(b"|".join([re.escape(special_token.encode('utf-8')) for special_token in special_tokens]))
+    
     with open(input_path, "rb") as f:
-        num_processes = 4
         boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
         bounds =  zip(boundaries[:-1], boundaries[1:])
         
+    # Pretokenize in parallel
+    worker_fn = partial(pretokenize_chunk, input_path=input_path, special_tokens=special_tokens, split_pat=split_pat)
     with Pool(num_processes) as p:
-        pretokenize_fn = partial(pretokenize_chunk, input_path=input_path, special_tokens=special_tokens)
-        pretoken_dicts = p.map(pretokenize_fn, bounds)
+        pretoken_dicts = p.map(worker_fn, bounds)
     
-    pretokens = sum(pretoken_dicts, Counter())
+    pretokens = Counter()
+    for pretoken_dict in pretoken_dicts:
+        pretokens.update(pretoken_dict)
+        
     time_elapsed = time() - start_time
     print(f"Pretokenization took {time_elapsed:.2f} s")
     return pretokens
