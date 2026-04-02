@@ -4,12 +4,12 @@ from collections import Counter
 from functools import partial
 from typing import BinaryIO
 from multiprocessing import Pool
-from tqdm import tqdm
 import mmap
 
 # Better to use re.ignorecase for contractions
 # Precompile the pattern
 RE_PAT = re.compile(br"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
+
 
 def find_chunk_boundaries(
     file: BinaryIO,
