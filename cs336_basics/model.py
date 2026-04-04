@@ -125,6 +125,8 @@ class MultiHeadSelfAttention(nn.Module):
         self.device = device
         
         # Q, K, V, O weights
+        # TODO: --> turn this into one matrix multiply
+        # But make it compatible with their run multi_head function (for loading the state dict)
         self.q_proj = Linear(d_model, d_model, device=device, dtype=dtype)
         self.k_proj = Linear(d_model, d_model, device=device, dtype=dtype)
         self.v_proj = Linear(d_model, d_model, device=device, dtype=dtype)
@@ -195,11 +197,34 @@ class TransformerLM(nn.Module):
                  device=None,
                  dtype=None):
         super().__init__()
-        # context_len = max_seq_len for rope
-        pass
+        
+        self.token_embeddings = Embedding(num_embeddings=vocab_size, embedding_dim=d_model, device=device, dtype=dtype)
+        self.layers = nn.ModuleList([TransformerBlock(d_model=d_model, 
+                                                      num_heads=num_heads, 
+                                                      d_ff=d_ff,
+                                                      theta=rope_theta, 
+                                                      max_seq_len=context_length,
+                                                      device=device,
+                                                      dtype=dtype) for _ in range(num_layers)])
+        self.ln_final = RMSNorm(d_model=d_model, device=device, dtype=dtype)
+        self.lm_head = Linear(in_features=d_model, out_features=vocab_size, device=device, dtype=dtype)
     
-    # Think about what else would be useful to put here
-    def forward(self, token_ids: Int[Tensor, '...']):
-        pass
+
+    def forward(self, token_ids: Int[Tensor, '...']
+                ) -> Float[Tensor, "batch_size sequence_length vocab_size"]:
+        
+        B, S = token_ids.shape
+        
+        # We will reuse these for every layer
+        token_positions = torch.arange(S, device=token_ids.device)
+        mask = torch.tril(torch.ones(S, S, device=token_ids.device)).bool()
+        
+        x = self.token_embeddings(token_ids)
+        for transformer_block in self.layers:
+            x = transformer_block(x, token_positions=token_positions, mask=mask)
+        x = self.ln_final(x)
+        logits = self.lm_head(x)
+        return logits
+
         
         
