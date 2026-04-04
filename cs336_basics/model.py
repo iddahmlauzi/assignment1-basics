@@ -6,6 +6,31 @@ from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
 
+
+def softmax(x:  Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
+    # Needed for numerical stability:
+    # exp(val) can become inf for large values then inf / inf = NaN
+    # Softmax operation is invariant to adding any constant 𝑐 to all inputs.
+    # Subtract the largest entry of 𝑣 from all elements of 𝑣, making the new largest entry 0
+    x = x - torch.max(x, dim=dim, keepdim=True).values
+    x = torch.exp(x)
+    return x / torch.sum(x, dim=dim, keepdim=True)
+
+def scaled_dot_product_attention(
+    Q: Float[Tensor, ' ... queries d_k'],
+    K: Float[Tensor, ' ... keys d_k"'],
+    V: Float[Tensor, ' ... keys d_v'],
+    mask: Bool[Tensor, ' ... queries keys'] | None = None,
+) -> Float[Tensor, ' ... queries d_v']:
+    d_k = Q.shape[-1]
+    attention = einx.dot('... queries [d_k], ... keys [d_k] -> ... queries keys', Q, K)
+    attention = attention / d_k**0.5
+    if mask is not None:
+        attention.masked_fill_(~mask, -float('inf'))
+    attention = softmax(attention, dim=-1)
+    return einx.dot('... queries [keys], ... [keys] d_v -> ... queries d_v', attention, V)
+
+
 class Linear(nn.Module):
     """Models nn.Linear"""
     def __init__(self, in_features: int, out_features: int, device=None, dtype=None):
@@ -16,6 +41,7 @@ class Linear(nn.Module):
         
     def forward(self, x: Float[Tensor, ' ... d_in']) -> Float[Tensor, ' ... d_out']:
         return einx.dot('d_out d_in, ... d_in -> ... d_out', self.weight, x)
+  
     
 class Embedding(nn.Module):
     """Models nn.Embedding"""
@@ -39,16 +65,59 @@ class RMSNorm(nn.Module):
         in_dtype = x.dtype
         x = x.to(torch.float32) # upscale to prevent overflow
         
-        # When we define a custom op, we need to give it an axis
-        mean_square_op = einx.torch.adapt_numpylike_reduce(op=lambda a, axis: (a**2).mean(axis=axis) + self.eps)
-        mean_square = mean_square_op('... [d_model] -> ...', x)
-        rms = torch.sqrt(mean_square)
-        rms_norm = einx.divide('... d_model, ... -> ... d_model', x, rms)
-        result = einx.multiply('... d_model, d_model -> ... d_model', rms_norm, self.weight)
+        mean_square = einx.mean('... [d_model] -> ... 1', x * x)
+        rms = torch.sqrt(mean_square + self.eps)
+        result =  x / rms * self.weight
         
         # Return the result in the original dtype
         return result.to(in_dtype)
+
+class SwiGLU(nn.Module):
+    def __init__(self, d_model: int, d_ff: int, device=None, dtype=None):
+        super().__init__()
+        self.w1 = Linear(d_model, d_ff, device, dtype)
+        self.w2 = Linear(d_ff, d_model, device, dtype)
+        self.w3 = Linear(d_model, d_ff, device, dtype)
         
+    def forward(self, x: Float[Tensor, " ... d_model"]) ->  Float[Tensor, " ... d_model"]:
+        f1 = self.w1(x)
+        silu = f1 * torch.sigmoid(f1)
+        f3 = silu * self.w3(x)
+        return self.w2(f3)
+    
+class RotaryPositionalEmbedding(nn.Module):
+    def __init__(self, theta: float, d_k: int, max_seq_len: int, device=None):
+        super().__init__()
+        
+        k = torch.linspace(start=1, end=d_k//2, steps=d_k//2)
+        freq = 1 / (theta ** ((2*k - 2) / d_k)) # rotational frequencies
+        indices = torch.arange(max_seq_len) 
+        thetas = einx.multiply('max_seq_len, d -> max_seq_len d', indices, freq)
+        self.register_buffer("cos_values", torch.cos(thetas), persistent=False)
+        self.register_buffer("sin_values", torch.sin(thetas), persistent=False)
+        
+    def forward(self, 
+                x: Float[Tensor, " ... sequence_length d_k"], 
+                token_positions: Int[Tensor, " ... sequence_length"]
+                ) -> Float[Tensor, " ... sequence_length d_k"]:
+        
+        input = einx.id('... seq_len (d p) -> ... seq_len d p', x, p=2) # Make the pairs for rotation
+        cos = einx.get_at('[max_seq_len] d, ... seq_len -> ... seq_len d', self.cos_values, token_positions)
+        sin = einx.get_at('[max_seq_len] d, ... seq_len -> ... seq_len d', self.sin_values, token_positions)
+        x_rotated = input[..., 0] * cos - input[..., 1] * sin
+        y_rotated = input[..., 0] * sin + input[..., 1] * cos
+        output = einx.id('... seq_len d, ... seq_len d -> ... seq_len (d (1 + 1))', x_rotated, y_rotated)
+        return output
+    
+
+class MultiHeadSelfAttention(nn.Module):
+    def __init__(self, d_model: int, num_heads: int):
+        super().__init__()
+        self.d_model = d_model
+        self.h = num_heads
+        self.d_k = d_model // self.h
+        self.d_v = d_model // self.h
+    
     
 
         
