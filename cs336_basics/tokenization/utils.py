@@ -48,6 +48,11 @@ def gpt2_bytes_to_unicode() -> dict[int, str]:
     d = dict(zip(bs, characters))
     return d
 
+def gpt2_unicode_to_bytes() -> dict[str, int]:
+    """This does the inverse of the function above"""
+    d = gpt2_bytes_to_unicode()
+    return {v: k for k, v in d.items()}
+
 
 class BytePair:
     """
