@@ -1,14 +1,18 @@
 import os
 import argparse
-import torch
 import numpy as np
+import sys
 import wandb
+import time
+import torch
+import yaml
 from .data import get_batch
 from .model import TransformerLM
 from .optim import AdamW, clip_gradients, get_cosine_lr
 from .checkpoint import save_checkpoint, load_checkpoint
 from .loss import cross_entropy
 from pathlib import Path
+
 
 def train(args):
     
@@ -52,7 +56,13 @@ def train(args):
     
     # 4. Training loop
     model.train()
-    for t in range(iteration, args.num_steps):
+    num_steps = args.num_steps
+    
+    # Process a specific number of tokens
+    if args.total_tokens_processed:
+        num_steps = round(args.total_tokens_processed / (args.batch_size * args.context_length))
+        
+    for t in range(iteration, num_steps):
         
         optimizer.zero_grad()
         
@@ -79,13 +89,40 @@ def train(args):
         if t % args.save_steps == 0:
             save_checkpoint(model=model, optimizer=optimizer, iteration=t, out=args.checkpoint_dir / f"checkpoint_{t}.pt")
         if t % args.log_steps == 0:
-            wandb.log({"train_loss": loss.item(), "learning_rate": learning_rate}, step=t)
+            wandb.log({"train_loss": loss.item(), "learning_rate": learning_rate, "time": time.time()}, step=t)
         if t % args.eval_steps == 0:
-            # need to evaluate then get val loss and val accuracy
-            pass
+            # Evaluate the model
+            # We sample some batchs from the val dataset
+            model.eval()
+            with torch.no_grad():
+                val_losses = []
+                for _ in range(args.eval_batches):
+                    x, y = get_batch(dataset=val_dataset,
+                                     batch_size=args.batch_size,
+                                     context_length=args.context_length,
+                                     device=args.device)
+                    logits = model(x)
+                    val_batch_loss = cross_entropy(inputs=logits, targets=y)
+                    val_losses.append(val_batch_loss.item())
+                val_loss = np.mean(val_losses)
+            wandb.log({"val_loss": val_loss}, step=t)
+            model.train()
         
 
 if __name__ == "__main__":
+    
+    # Parse the yaml config
+    # Doing this to make runs easier (so I can just modify the config directly)
+    config_parser = argparse.ArgumentParser(add_help=False)
+    config_parser.add_argument("--config", type=str, help="Path to a yaml config file")
+    # So this will put the config file in args and everything else in remaining args
+    args, remaining_args = config_parser.parse_known_args()
+    
+    # Load the YAML config file
+    default_args = {}
+    if args.config:
+        with open(args.config, "r") as f:
+            default_args = yaml.safe_load(f)
 
     parser = argparse.ArgumentParser()
     # Model Hyperparameters
@@ -128,15 +165,29 @@ if __name__ == "__main__":
                         help="Path to the loaded checkpoint")
     parser.add_argument("--device", type=str)
     parser.add_argument("--eval_steps", type=int, default=500)
+    parser.add_argument("--eval_batches", type=int, default=20,
+                        help="Number of batches to sample from val dataset during evaluation")
     parser.add_argument("--save_steps", type=int, default=500)
     parser.add_argument("--log_steps", type=int, default=500)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--total_tokens_processed", type=int)
     
-    args = parser.parse_args()
+    # Wandb specific argumsnets
+    parser.add_argument("--run_name", type=str)
+    parser.add_argument("--group_name", type=str)
+    
+    # Inject the yaml values to override the defaults that I mentioned above
+    parser.set_defaults(**default_args)
+    
+    # Then we can parse the rest of the commends (in case I want to add some in terminal)
+    args = parser.parse_args(remaining_args)
     device = args.device or ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
     args.device = device
     
-    wandb.init(project="CS336-Assignment1", config=vars(args))
+    wandb.init(project="CS336-Assignment1", 
+               name=args.run_name,
+               group=args.group_name,
+               config=vars(args))
     train(args)
     
     

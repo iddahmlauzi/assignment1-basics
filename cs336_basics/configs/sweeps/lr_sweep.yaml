@@ -1,0 +1,21 @@
+#lr_sweep.yaml
+program: cs336_basics/train.py
+name: lr_sweep
+method: grid
+metric:
+  goal: minimize
+  name: val_loss
+command:
+  - ${env}
+  - uv
+  - run
+  - python
+  - ${program}
+  - "--config"
+  - "cs336_basics/configs/base_tinystories.yaml"
+  - ${args}
+parameters:
+  max_learning_rate:
+    values: [1e-2, 1e-3, 1e-4]
+  batch_size:
+    values: [32, 64, 128]
