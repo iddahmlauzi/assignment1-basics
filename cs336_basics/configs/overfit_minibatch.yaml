@@ -1,4 +1,4 @@
-# overfit_mimibatch.yaml
+# overfit_minibatch.yaml
 # Model: Use Base Tinystories model with a smaller batch size
 batch_size: 4  
 

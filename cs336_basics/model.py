@@ -45,7 +45,7 @@ class MultiHeadSelfAttention(nn.Module):
             raise ValueError("theta provided but max_seq_len is None — both are required to use RoPE")
         if max_seq_len and not theta:
             raise ValueError("max_seq_len provided but theta is None — both are required to use RoPE")
-        self.rope = RotaryPositionalEmbedding(theta, d_k=self.d_k, max_seq_len=max_seq_len) if theta else None
+        self.rope = RotaryPositionalEmbedding(theta, d_k=self.d_k, max_seq_len=max_seq_len, device=device) if theta else None
         
     
     def forward(self, x: Float[Tensor, " ... sequence_length d_in"],

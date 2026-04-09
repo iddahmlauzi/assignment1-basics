@@ -6,11 +6,11 @@ import wandb
 import time
 import torch
 import yaml
-from .data import get_batch
-from .model import TransformerLM
-from .optim import AdamW, clip_gradients, get_cosine_lr
-from .checkpoint import save_checkpoint, load_checkpoint
-from .loss import cross_entropy
+from cs336_basics.data import get_batch
+from cs336_basics.model import TransformerLM
+from cs336_basics.optim import AdamW, clip_gradients, get_cosine_lr
+from cs336_basics.checkpoint import save_checkpoint, load_checkpoint
+from cs336_basics.loss import cross_entropy
 from pathlib import Path
 
 
@@ -187,9 +187,9 @@ if __name__ == "__main__":
     # Training
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--num_steps", type=int, default=20000)
-    parser.add_argument("--data_path", type=str, required=True)
-    parser.add_argument("--val_path", type=str, required=True)
-    parser.add_argument("--checkpoint_dir", type=str, required=True)
+    parser.add_argument("--data_path", type=str, default=None)
+    parser.add_argument("--val_path", type=str, default=None)
+    parser.add_argument("--checkpoint_dir", type=str, default=None)
     parser.add_argument("--checkpoint_path", type=str, 
                         help="Path to the loaded checkpoint")
     parser.add_argument("--device", type=str)
@@ -210,6 +210,10 @@ if __name__ == "__main__":
     
     # Then we can parse the rest of the commends (in case I want to add some in terminal)
     args = parser.parse_args(remaining_args)
+    for argname in ["checkpoint_dir", "data_path", "val_path"]:
+        if getattr(args, argname) is None:
+            parser.error(f"the following arguments are required: --{arg_name} (provide via terminal or --config)")
+        
     device = args.device or ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
     args.device = device
     
