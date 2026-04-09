@@ -1,0 +1,22 @@
+# overfit_mimibatch.yaml
+# Model: Use Base Tinystories model with a smaller batch size
+batch_size: 4  
+
+# Encourage quick learning with no regularization
+max_learning_rate: 5e-4
+warmup_iters: 0
+weight_decay: 0.0
+
+# Short run time with frequent logging
+# save steps, eval steps and checkpoint steps defaults 
+num_steps: 200 
+log_steps: 5
+eval_steps: 200
+
+run_name: "debug_overfit_v1"
+group_name: "sanity_checks"
+
+# Required paths
+data_path: "data/tinystories-train-encoded.bin"
+val_path: "data/tinystories-valid-encoded.bin"
+checkpoint_dir: "checkpoints/" # Cause this is a required argument

@@ -17,5 +17,3 @@ command:
 parameters:
   max_learning_rate:
     values: [1e-2, 1e-3, 1e-4]
-  batch_size:
-    values: [32, 64, 128]

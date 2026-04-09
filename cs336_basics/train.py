@@ -14,6 +14,8 @@ from .loss import cross_entropy
 from pathlib import Path
 
 
+# TODO: How to set up Modal? This is annoying argh but figure out how to do this. --> Will do this later
+
 def train(args):
     
     torch.manual_seed(args.seed)
@@ -29,8 +31,10 @@ def train(args):
     val_dataset = np.memmap(args.val_path, dtype='uint16', mode='r')
     
     # 2. Set up Checkpointing Directory
-    args.checkpoint_dir = Path(args.checkpoint_dir)
-    os.makedirs(args.checkpoint_dir, exist_ok=True)
+    # Use the run_name if provided, otherwise fallback to a timestamp
+    run_name = args.run_name if args.run_name else time.strftime("%Y%m%d-%H%M%S")
+    checkpoint_dir = Path(args.checkpoint_dir) / run_name
+    os.makedirs(checkpoint_dir, exist_ok=True)
     
     # 3. Set up the model and the optimizer
     model = TransformerLM(vocab_size=args.vocab_size,
@@ -41,6 +45,13 @@ def train(args):
                           rope_theta=args.rope_theta,
                           context_length=args.context_length,
                           device=args.device)
+    
+    # Optimization stuff
+    if args.device == "mps":
+        model = torch.compile(model, backend="aot_eager")
+    else:
+        model = torch.compile(model)
+        torch.set_float32_matmul_precision('high')
     
     optimizer = AdamW(params=model.parameters(),
                       lr=args.max_learning_rate,
@@ -56,19 +67,22 @@ def train(args):
     
     # 4. Training loop
     model.train()
-    num_steps = args.num_steps
     
     # Process a specific number of tokens
+    num_steps = args.num_steps
     if args.total_tokens_processed:
         num_steps = round(args.total_tokens_processed / (args.batch_size * args.context_length))
-        
+    
+    # Temporary move for debugging
+    x, y = get_batch(train_dataset, batch_size=args.batch_size, 
+                    context_length=args.context_length, device=args.device)
     for t in range(iteration, num_steps):
         
         optimizer.zero_grad()
         
-        # Sample a batch
-        x, y = get_batch(train_dataset, batch_size=args.batch_size, 
-                         context_length=args.context_length, device=args.device)
+        # Sample a batch --> temporarily disabled for debugging experiments
+        # x, y = get_batch(train_dataset, batch_size=args.batch_size, 
+        #                  context_length=args.context_length, device=args.device)
         
         logits = model(x)
         loss = cross_entropy(inputs=logits, targets=y)
@@ -87,9 +101,21 @@ def train(args):
         
         # Save the checkpoint
         if t % args.save_steps == 0:
-            save_checkpoint(model=model, optimizer=optimizer, iteration=t, out=args.checkpoint_dir / f"checkpoint_{t}.pt")
+            # Save the actual checkpoint
+            save_path = checkpoint_dir / f"checkpoint_{t}.pt"
+            save_checkpoint(model=model, optimizer=optimizer, iteration=t, out=save_path)
+            # Symlink the latest model
+            latest_path = checkpoint_dir / "latest.pt"
+            if latest_path.exists():
+                latest_path.unlink()
+            latest_path.symlink_to(save_path.name)
+        
         if t % args.log_steps == 0:
-            wandb.log({"train_loss": loss.item(), "learning_rate": learning_rate, "time": time.time()}, step=t)
+            wandb.log({"train_loss": loss.item(),
+                       "learning_rate": learning_rate, 
+                       "time": time.time()}, 
+                      step=t)
+            
         if t % args.eval_steps == 0:
             # Evaluate the model
             # We sample some batchs from the val dataset
@@ -97,16 +123,20 @@ def train(args):
             with torch.no_grad():
                 val_losses = []
                 for _ in range(args.eval_batches):
-                    x, y = get_batch(dataset=val_dataset,
+                    val_x, val_y = get_batch(dataset=val_dataset,
                                      batch_size=args.batch_size,
                                      context_length=args.context_length,
                                      device=args.device)
-                    logits = model(x)
-                    val_batch_loss = cross_entropy(inputs=logits, targets=y)
+                    logits = model(val_x)
+                    val_batch_loss = cross_entropy(inputs=logits, targets=val_y)
                     val_losses.append(val_batch_loss.item())
                 val_loss = np.mean(val_losses)
             wandb.log({"val_loss": val_loss}, step=t)
             model.train()
+    
+    # Save the final model
+    print(f"Training complete. Saving final model to {checkpoint_dir}")
+    save_checkpoint(model=model, optimizer=optimizer, iteration=num_steps, out=checkpoint_dir / "final_model.pt")
         
 
 if __name__ == "__main__":
@@ -125,39 +155,38 @@ if __name__ == "__main__":
             default_args = yaml.safe_load(f)
 
     parser = argparse.ArgumentParser()
-    # Model Hyperparameters
-    parser.add_argument("--vocab_size", type=int, default=1000)
-    parser.add_argument("--context_length", type=int, default=265)
+    # Model Hyperparameters: DEFAULTS FOR TINYSTORIES
+    parser.add_argument("--vocab_size", type=int, default=10000)
+    parser.add_argument("--context_length", type=int, default=256)
     parser.add_argument("--d_model", type=int, default=512)
     parser.add_argument("--d_ff", type=int, default=1344)
     parser.add_argument("-theta","--rope_theta", type=float, default=10000)
     parser.add_argument("--num_layers", type=int, default=4)
     parser.add_argument("--num_heads", type=int, default=16)
     
-    # Optimizer Hyperparameters
+    # Optimizer Hyperparameters: DEFAULTS DONE
     parser.add_argument("--beta1", type=float, default=0.9)
-    parser.add_argument("--beta2", type=float, default=0.99)
+    parser.add_argument("--beta2", type=float, default=0.95)
     parser.add_argument("--adam_eps", type=float, default=1e-8)
-    parser.add_argument("--weight_decay", type=float, default=1e-2)
+    parser.add_argument("--weight_decay", type=float, default=1e-1)
     
-    # LR Scheduler
-    # TODO: Fix defaults here
+    # LR Scheduler: DEFAULTS DONE
     parser.add_argument("-max_lr","--max_learning_rate", type=float, default=1e-3,
                         help="alpha_max, the maximum learning rate for cosine learning rate schedule (with warmup).")
-    parser.add_argument("-min_lr","--min_learning_rate", type=float, default=1e-3, 
+    parser.add_argument("-min_lr","--min_learning_rate", type=float, default=1e-4, 
                         help="alpha_min, the minimum / final learning rate for the cosine learning rate schedule (with warmup).")
-    parser.add_argument("--warmup_iters", type=int, default=1, 
+    parser.add_argument("--warmup_iters", type=int, default=500, 
                         help=" T_w, the number of iterations to linearly warm-up the learning rate.")
-    parser.add_argument("--cosine_cycle_iters", type=int, default=1, 
+    parser.add_argument("--cosine_cycle_iters", type=int, default=20000, 
                         help="T_c, the number of cosine annealing iterations.")
     
-    # Gradient Clipping
-    parser.add_argument("--max_l2_norm", type=float, default=1e1,
+    # Gradient Clipping: DEFAULTS DONE
+    parser.add_argument("--max_l2_norm", type=float, default=1,
                         help="A positive value containing the maximum l2-norm.")
     
     # Training
-    parser.add_argument("--batch_size", type=int, default=2)
-    parser.add_argument("--num_steps", type=int, default=1000)
+    parser.add_argument("--batch_size", type=int, default=64)
+    parser.add_argument("--num_steps", type=int, default=20000)
     parser.add_argument("--data_path", type=str, required=True)
     parser.add_argument("--val_path", type=str, required=True)
     parser.add_argument("--checkpoint_dir", type=str, required=True)
@@ -167,14 +196,14 @@ if __name__ == "__main__":
     parser.add_argument("--eval_steps", type=int, default=500)
     parser.add_argument("--eval_batches", type=int, default=20,
                         help="Number of batches to sample from val dataset during evaluation")
-    parser.add_argument("--save_steps", type=int, default=500)
-    parser.add_argument("--log_steps", type=int, default=500)
+    parser.add_argument("--save_steps", type=int, default=2000)
+    parser.add_argument("--log_steps", type=int, default=100)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--total_tokens_processed", type=int)
     
     # Wandb specific argumsnets
-    parser.add_argument("--run_name", type=str)
-    parser.add_argument("--group_name", type=str)
+    parser.add_argument("--run_name", type=str, default=None)
+    parser.add_argument("--group_name", type=str, default=None)
     
     # Inject the yaml values to override the defaults that I mentioned above
     parser.set_defaults(**default_args)

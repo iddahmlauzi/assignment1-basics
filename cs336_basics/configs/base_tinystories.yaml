@@ -10,3 +10,4 @@ total_tokens_processed: 327680000
 max_learning_rate: 0.001
 data_path: "data/tinystories-train-encoded.bin"
 val_path: "data/tinystories-valid-encoded.bin"
+checkpoint_dir: "checkpoints/"
