@@ -76,6 +76,9 @@ def train(args):
     # Temporary move for debugging
     x, y = get_batch(train_dataset, batch_size=args.batch_size, 
                     context_length=args.context_length, device=args.device)
+    
+    print("Beginning Training....")
+    start_time = time.time()
     for t in range(iteration, num_steps):
         
         optimizer.zero_grad()
@@ -113,7 +116,7 @@ def train(args):
         if t % args.log_steps == 0:
             wandb.log({"train_loss": loss.item(),
                        "learning_rate": learning_rate, 
-                       "time": time.time()}, 
+                       "time": time.time() - start_time}, 
                       step=t)
             
         if t % args.eval_steps == 0:
@@ -212,7 +215,7 @@ if __name__ == "__main__":
     args = parser.parse_args(remaining_args)
     for argname in ["checkpoint_dir", "data_path", "val_path"]:
         if getattr(args, argname) is None:
-            parser.error(f"the following arguments are required: --{arg_name} (provide via terminal or --config)")
+            parser.error(f"the following arguments are required: --{argname} (provide via terminal or --config)")
         
     device = args.device or ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
     args.device = device
