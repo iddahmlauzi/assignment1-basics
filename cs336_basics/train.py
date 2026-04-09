@@ -6,6 +6,7 @@ import wandb
 import time
 import torch
 import yaml
+import einx
 from pathlib import Path
 from cs336_basics.data import get_batch
 from cs336_basics.model import TransformerLM
@@ -13,6 +14,34 @@ from cs336_basics.optim import AdamW, clip_gradients, get_cosine_lr
 from cs336_basics.checkpoint import save_checkpoint, load_checkpoint
 from cs336_basics.loss import cross_entropy
 
+
+def evaluate_full(dataset, model, batch_size, context_length, device):
+    """After training, we do one last evaluation run on the entire val dataset"""
+    model.eval()
+    total_loss = 0.0
+    total_examples = 0
+    
+    # So this will allow us to get the various start indices 
+    indices = np.arange(0, len(dataset) - context_length, context_length)
+    with torch.no_grad():
+        for i in range(0, len(indices), batch_size):
+            start_indices = indices[i: i + batch_size]
+            current_batch_size = len(start_indices)
+            
+            offsets = np.arange(context_length)
+            batch_indices = einx.add('batch_size, context_length -> batch_size context_length', start_indices, offsets)
+            x, y = dataset[batch_indices], dataset[batch_indices + 1]
+            x = torch.as_tensor(x, device=device, dtype=torch.long)
+            y = torch.as_tensor(y, device=device, dtype=torch.long)
+            
+            logits = model(x)
+            val_batch_loss = cross_entropy(inputs=logits, targets=y)
+            total_loss += val_batch_loss.item() * current_batch_size # handle final potentially not full batch
+            total_examples += current_batch_size
+    val_loss = total_loss / total_examples
+    
+    return val_loss
+        
 
 def train(args):
     
@@ -55,7 +84,8 @@ def train(args):
                       lr=args.max_learning_rate,
                       betas=(args.beta1, args.beta2),
                       eps=args.adam_eps,
-                      weight_decay=args.weight_decay)
+                      weight_decay=args.weight_decay,
+                      device=args.device)
     
     iteration = 0
     if args.checkpoint_path:
@@ -66,24 +96,15 @@ def train(args):
     # 4. Training loop
     model.train()
     
-    # Process a specific number of tokens
-    num_steps = args.num_steps
-    if args.total_tokens_processed:
-        num_steps = round(args.total_tokens_processed / (args.batch_size * args.context_length))
-    
-    # Temporary move for debugging
-    x, y = get_batch(train_dataset, batch_size=args.batch_size, 
-                    context_length=args.context_length, device=args.device)
-    
     print("Beginning Training....")
     start_time = time.time()
-    for t in range(iteration, num_steps):
+    for t in range(iteration, args.num_steps):
         
         optimizer.zero_grad()
         
-        # Sample a batch --> temporarily disabled for debugging experiments
-        # x, y = get_batch(train_dataset, batch_size=args.batch_size, 
-        #                  context_length=args.context_length, device=args.device)
+        # Sample a batch
+        x, y = get_batch(train_dataset, batch_size=args.batch_size, 
+                         context_length=args.context_length, device=args.device)
         
         logits = model(x)
         loss = cross_entropy(inputs=logits, targets=y)
@@ -134,10 +155,24 @@ def train(args):
                 val_loss = np.mean(val_losses)
             wandb.log({"val_loss": val_loss}, step=t)
             model.train()
+            
+    # Final Validation Run
+    print("Running final evaluation on full validation set...")
+    final_val_loss = evaluate_full(
+        val_dataset, model, args.batch_size, args.context_length, args.device
+    )
+    
+    # Calculate Perplexity
+    perplexity = np.exp(final_val_loss)
+    
+    print(f"Final Val Loss: {final_val_loss:.4f}")
+    print(f"Final Perplexity: {perplexity:.4f}")
+    
+    wandb.log({"final_full_val_loss": final_val_loss, "final_perplexity": perplexity})
     
     # Save the final model
     print(f"Training complete. Saving final model to {checkpoint_dir}")
-    save_checkpoint(model=model, optimizer=optimizer, iteration=num_steps, out=checkpoint_dir / "final_model.pt")
+    save_checkpoint(model=model, optimizer=optimizer, iteration=args.num_steps, out=checkpoint_dir / "final_model.pt")
         
     
     

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="2" tests="48" time="103.251" timestamp="2026-04-09T14:22:25.923173-07:00" hostname="DNa1c07c4.SUNet"><testcase classname="tests.test_data" name="test_get_batch" time="0.254" /><testcase classname="tests.test_model" name="test_linear" time="0.042" /><testcase classname="tests.test_model" name="test_embedding" time="0.029" /><testcase classname="tests.test_model" name="test_swiglu" time="0.021" /><testcase classname="tests.test_model" name="test_scaled_dot_product_attention" time="0.047" /><testcase classname="tests.test_model" name="test_4d_scaled_dot_product_attention" time="0.043" /><testcase classname="tests.test_model" name="test_multihead_self_attention" time="0.172" /><testcase classname="tests.test_model" name="test_multihead_self_attention_with_rope" time="0.064" /><testcase classname="tests.test_model" name="test_transformer_lm" time="0.083" /><testcase classname="tests.test_model" name="test_transformer_lm_truncated_input" time="0.269" /><testcase classname="tests.test_model" name="test_transformer_block" time="0.008" /><testcase classname="tests.test_model" name="test_rmsnorm" time="0.005" /><testcase classname="tests.test_model" name="test_rope" time="0.058" /><testcase classname="tests.test_model" name="test_silu_matches_pytorch" time="0.000"><failure message="NotImplementedError">def test_silu_matches_pytorch():
+        x = torch.tensor(
+            [
+                [0.2352, 0.9259, 0.5189, 0.4725, 0.9730],
+                [0.7581, 0.9692, 0.2129, 0.9345, 0.0149],
+            ]
+        )
+        expected_output = F.silu(x)
+&gt;       actual_output = run_silu(x)
+                        ^^^^^^^^^^^
+
+tests/test_model.py:201: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+in_features = tensor([[0.2352, 0.9259, 0.5189, 0.4725, 0.9730],
+        [0.7581, 0.9692, 0.2129, 0.9345, 0.0149]])
+
+    def run_silu(in_features: Float[Tensor, " ..."]) -&gt; Float[Tensor, " ..."]:
+        """Given a tensor of inputs, return the output of applying SiLU
+        to each element.
+    
+        Args:
+            in_features(Float[Tensor, "..."]): Input features to run SiLU on. Shape is arbitrary.
+    
+        Returns:
+            Float[Tensor,"..."]: of with the same shape as `in_features` with the output of applying
+            SiLU to each element.
+        """
+&gt;       raise NotImplementedError
+E       NotImplementedError
+
+tests/adapters.py:433: NotImplementedError</failure></testcase><testcase classname="tests.test_nn_utils" name="test_softmax_matches_pytorch" time="0.000" /><testcase classname="tests.test_nn_utils" name="test_cross_entropy" time="0.030" /><testcase classname="tests.test_nn_utils" name="test_gradient_clipping" time="0.039" /><testcase classname="tests.test_optimizer" name="test_adamw" time="0.205" /><testcase classname="tests.test_optimizer" name="test_get_lr_cosine_schedule" time="0.000" /><testcase classname="tests.test_serialization" name="test_checkpointing" time="0.015" /><testcase classname="tests.test_tokenizer" name="test_roundtrip_empty" time="4.287" /><testcase classname="tests.test_tokenizer" name="test_empty_matches_tiktoken" time="3.915" /><testcase classname="tests.test_tokenizer" name="test_roundtrip_single_character" time="3.771" /><testcase classname="tests.test_tokenizer" name="test_single_character_matches_tiktoken" time="3.575" /><testcase classname="tests.test_tokenizer" name="test_roundtrip_single_unicode_character" time="3.826" /><testcase classname="tests.test_tokenizer" name="test_single_unicode_character_matches_tiktoken" time="3.623" /><testcase classname="tests.test_tokenizer" name="test_roundtrip_ascii_string" time="3.646" /><testcase classname="tests.test_tokenizer" name="test_ascii_string_matches_tiktoken" time="3.703" /><testcase classname="tests.test_tokenizer" name="test_roundtrip_unicode_string" time="3.732" /><testcase classname="tests.test_tokenizer" name="test_unicode_string_matches_tiktoken" time="4.380" /><testcase classname="tests.test_tokenizer" name="test_roundtrip_unicode_string_with_special_tokens" time="3.726" /><testcase classname="tests.test_tokenizer" name="test_unicode_string_with_special_tokens_matches_tiktoken" time="3.775" /><testcase classname="tests.test_tokenizer" name="test_overlapping_special_tokens" time="3.513" /><testcase classname="tests.test_tokenizer" name="test_address_roundtrip" time="7.400" /><testcase classname="tests.test_tokenizer" name="test_address_matches_tiktoken" time="7.640" /><testcase classname="tests.test_tokenizer" name="test_german_roundtrip" time="5.270" /><testcase classname="tests.test_tokenizer" name="test_german_matches_tiktoken" time="5.174" /><testcase classname="tests.test_tokenizer" name="test_tinystories_sample_roundtrip" time="7.290" /><testcase classname="tests.test_tokenizer" name="test_tinystories_matches_tiktoken" time="7.063" /><testcase classname="tests.test_tokenizer" name="test_encode_special_token_trailing_newlines" time="3.379" /><testcase classname="tests.test_tokenizer" name="test_encode_special_token_double_newline_non_whitespace" time="3.499" /><testcase classname="tests.test_tokenizer" name="test_encode_iterable_tinystories_sample_roundtrip" time="0.085" /><testcase classname="tests.test_tokenizer" name="test_encode_iterable_tinystories_matches_tiktoken" time="0.080" /><testcase classname="tests.test_tokenizer" name="test_encode_iterable_memory_usage" time="0.001"><skipped type="pytest.skip" message="rlimit support for non-linux systems is spotty.">/Users/iddah/Documents/CS336/assignment1-basics/tests/test_tokenizer.py:416: rlimit support for non-linux systems is spotty.</skipped></testcase><testcase classname="tests.test_tokenizer" name="test_encode_memory_usage" time="0.000"><skipped type="pytest.skip" message="rlimit support for non-linux systems is spotty.">/Users/iddah/Documents/CS336/assignment1-basics/tests/test_tokenizer.py:431: rlimit support for non-linux systems is spotty.</skipped></testcase><testcase classname="tests.test_train_bpe" name="test_train_bpe_speed" time="0.233" /><testcase classname="tests.test_train_bpe" name="test_train_bpe" time="0.227" /><testcase classname="tests.test_train_bpe" name="test_train_bpe_special_tokens" time="0.610" /></testsuite></testsuites>

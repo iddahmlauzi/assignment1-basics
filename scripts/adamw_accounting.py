@@ -86,12 +86,21 @@ if __name__ == "__main__":
     # (b) Instantiate your answer for a GPT-2 XL-shaped model to get an expression that only
     #     depends on the batch_size. What is the maximum batch size you can use and still fit within
     #     80GB memory?
-    vocab_size = 50257
-    context_length = 1024
-    num_layers = 48
-    d_model = 1600
-    num_heads = 25
-    d_ff = 4288
+    # vocab_size = 50257
+    # context_length = 1024
+    # num_layers = 48
+    # d_model = 1600
+    # num_heads = 25
+    # d_ff = 4288
+    
+    # Going to calculate this for my TinyStories Model
+    vocab_size = 10000
+    context_length = 256
+    num_layers = 4
+    num_heads = 16
+    d_ff = 1344
+    d_model = 512
+    max_gigs = 192 #B200
     
     # Expression (Elements)
     parameters = (2 * vocab_size * d_model) + num_layers * (12 * d_model**2 + 2 * d_model) + d_model
@@ -113,14 +122,14 @@ if __name__ == "__main__":
     activation_memory_per_batch_bytes = 4 * activations_batch_size_coeff
     
     # Target Memory: 80 GB = 80 * 10^9 bytes 
-    target_memory_bytes = 80 * (10**9)
+    target_memory_bytes = max_gigs * (10**9)
     
     # Solve for batch_size: static_memory + batch_size * activation_memory <= target_memory
     available_memory_for_activations = target_memory_bytes - static_memory_bytes
     max_batch_size = available_memory_for_activations // activation_memory_per_batch_bytes
     
     print(f"Expression: {activation_memory_per_batch_bytes:,.0f} * batch_size + {static_memory_bytes:,.0f}")
-    print(f"Maximum batch size fitting in 80GB: {int(max_batch_size)}")
+    print(f"Maximum batch size fitting in {max_gigs}GB: {int(max_batch_size)}")
     
     # ---------------------------------------------------------
     # (d) MFU and Training Time

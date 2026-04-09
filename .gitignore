@@ -8,6 +8,7 @@ __pycache__/
 
 # Data folder
 data/
+checkpoints/
 
 # Distribution / packaging
 .Python

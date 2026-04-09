@@ -1,0 +1,9 @@
+# sweeps/tinystories_lr_sweep.yaml
+# We start with a coarse sweep where we sweep across logarithmic magnitudes to find the right neighborhood
+
+base_config: "configs/base_tinystories.yaml"
+group_name: "tinystories_lr_sweep"
+
+parameters:
+  max_learning_rate: [1.0e-2, 1.0e-3, 1.0e-4]
+  

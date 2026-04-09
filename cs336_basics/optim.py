@@ -93,14 +93,15 @@ class SGD(torch.optim.Optimizer):
 
 class AdamW(torch.optim.Optimizer):
     """AdamW optimizer. Uses same defaults as torch.optim.AdamW"""
-    def __init__(self, params, lr=0.001, betas=(0.9, 0.99), eps=1e-08, weight_decay=0.01):
+    def __init__(self, params, lr=0.001, betas=(0.9, 0.99), eps=1e-08, weight_decay=0.01, device=None):
         if lr < 0:
             raise ValueError(f"Invalid learning rate: {lr}")
         
         defaults = {"lr": lr,
                     "betas": betas,
                     "eps": eps,
-                    "weight_decay": weight_decay}
+                    "weight_decay": weight_decay,
+                    "device": device}
     
         super().__init__(params, defaults)
     
@@ -111,6 +112,7 @@ class AdamW(torch.optim.Optimizer):
             b1, b2 = group["betas"]
             eps = group["eps"]
             weight_decay = group["weight_decay"]
+            device = group["device"]
             
             for p in group["params"]:
                 if p.grad is None:
@@ -124,8 +126,8 @@ class AdamW(torch.optim.Optimizer):
                 p.data -= lr * weight_decay * p.data
                 
                 # Apply moment estimates
-                m = state.get("m", torch.zeros(p.shape))
-                v = state.get("v", torch.zeros(p.shape))
+                m = state.get("m", torch.zeros(p.shape, device=device))
+                v = state.get("v", torch.zeros(p.shape, device=device))
                 # In place updates
                 m.mul_(b1).add_(p.grad, alpha=1-b1)
                 v.mul_(b2).add_(p.grad**2, alpha=1-b2)

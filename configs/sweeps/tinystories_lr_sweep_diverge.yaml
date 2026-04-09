@@ -1,0 +1,8 @@
+# sweeps/tinystories_lr_sweep_diverge.yaml
+# We found 1e-2 to have the best performance so we will test values around it
+
+base_config: "configs/base_tinystories.yaml"
+group_name: "tinystories_lr_sweep_diverge"
+
+parameters:
+  max_learning_rate: [9.0e-1]

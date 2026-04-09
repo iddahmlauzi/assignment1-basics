@@ -156,7 +156,7 @@ class Tokenizer:
                     self.vocab_map[token] = token_id
                     
         self.merges = merges # dont think I need to store this anymore
-        self.num_processes = 150
+        self.num_processes = 4
         
         self.rank_map = {}
         # Use an index to map each merged byte pair to the index it occurs in merges
