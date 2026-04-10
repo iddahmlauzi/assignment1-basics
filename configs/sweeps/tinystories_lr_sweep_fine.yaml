@@ -2,7 +2,7 @@
 # We found 1e-2 to have the best performance so we will test values around it
 
 base_config: "configs/base_tinystories.yaml"
-group_name: "tinystories_lr_sweep"
+group_name: "tinystories_best"
 
 parameters:
-  max_learning_rate: [8.0e-3, 9.0e-3, 1.5e-2, 2.0e-2]
+  max_learning_rate: [8.0e-3]

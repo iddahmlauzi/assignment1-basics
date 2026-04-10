@@ -72,6 +72,15 @@ def train(args):
                           rope_theta=args.rope_theta,
                           context_length=args.context_length,
                           device=args.device)
+    # We will also save the model config
+    model_config = {"vocab_size": args.vocab_size,
+              "d_model": args.d_model,
+              "num_layers": args.num_layers,
+              "num_heads": args.num_heads,
+              "d_ff": args.d_ff,
+              "rope_theta": args.rope_theta,
+              "context_length": args.context_length,
+              "device": args.device}
     
     # Optimization stuff
     if args.device == "mps":
@@ -122,10 +131,10 @@ def train(args):
         optimizer.step()
         
         # Save the checkpoint
-        if t % args.save_steps == 0:
+        if t > 0 and t % args.save_steps == 0:
             # Save the actual checkpoint
             save_path = checkpoint_dir / f"checkpoint_{t}.pt"
-            save_checkpoint(model=model, optimizer=optimizer, iteration=t, out=save_path)
+            save_checkpoint(model=model, optimizer=optimizer, iteration=t, out=save_path, config=model_config)
             # Symlink the latest model
             latest_path = checkpoint_dir / "latest.pt"
             if latest_path.exists():
@@ -172,7 +181,7 @@ def train(args):
     
     # Save the final model
     print(f"Training complete. Saving final model to {checkpoint_dir}")
-    save_checkpoint(model=model, optimizer=optimizer, iteration=args.num_steps, out=checkpoint_dir / "final_model.pt")
+    save_checkpoint(model=model, optimizer=optimizer,config=model_config, iteration=args.num_steps, out=checkpoint_dir / "final_model.pt")
         
     
     

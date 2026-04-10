@@ -8,6 +8,7 @@ def save_checkpoint(
     model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
     iteration: int,
+    config: dict,
     out: str | os.PathLike | BinaryIO | IO[bytes],
 ):
     """
@@ -20,10 +21,12 @@ def save_checkpoint(
             we've completed.
         out (str | os.PathLike | BinaryIO | IO[bytes]): Path or file-like object to serialize the model, optimizer, and iteration to.
     """
+    unwrapped_model = getattr(model, "_orig_mod", model)
     checkpoint = {
-        "model": model.state_dict(),
+        "model": unwrapped_model.state_dict(),
         "optimizer": optimizer.state_dict(),
-        "iteration": iteration
+        "iteration": iteration,
+        "config": config
     }
     torch.save(checkpoint, out)
 
@@ -51,4 +54,7 @@ def load_checkpoint(
     optimizer.load_state_dict(checkpoint["optimizer"])
     
     return checkpoint["iteration"]
+
+
+    
     
