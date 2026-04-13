@@ -3,8 +3,9 @@ import modal
 import wandb
 import torch
 import yaml
-import itertools
 import copy
+import itertools
+from typing import Literal
 from cs336_basics.train import train
 from cs336_basics.modal_utils import VOLUME_MOUNTS, app, build_image
 
@@ -14,7 +15,7 @@ wandb_secret = modal.Secret.from_name("wandb")
 @app.function(image=build_image(), 
               volumes=VOLUME_MOUNTS, 
               gpu="B200", secrets=[wandb_secret],
-              timeout=7200)
+              timeout=2700)
 def train_remote(args):
     args = argparse.Namespace(**args)
     device = args.device or ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
@@ -43,16 +44,24 @@ def main(config: str):
     parser.add_argument("--vocab_size", type=int, default=10000)
     parser.add_argument("--context_length", type=int, default=256)
     parser.add_argument("--d_model", type=int, default=512)
-    parser.add_argument("--d_ff", type=int, default=1344)
     parser.add_argument("-theta","--rope_theta", type=float, default=10000)
     parser.add_argument("--num_layers", type=int, default=4)
     parser.add_argument("--num_heads", type=int, default=16)
+    parser.add_argument("--norm_style", type=str, default="pre")
+    parser.add_argument("--use_rope", type=bool, default=True)
+    parser.add_argument("--ffn_type", type=str, default="swiglu")
     
-    # Optimizer Hyperparameters: DEFAULTS DONE
+    # ADAM Optimizer Hyperparameters: DEFAULTS DONE
     parser.add_argument("--beta1", type=float, default=0.9)
     parser.add_argument("--beta2", type=float, default=0.95)
     parser.add_argument("--adam_eps", type=float, default=1e-8)
     parser.add_argument("--weight_decay", type=float, default=1e-1)
+    
+    # Muon Optimizer
+    parser.add_argument("--use_muon", action="store_true")
+    parser.add_argument("--muon_mu", type=float, default=0.9)
+    parser.add_argument("--muon_backend", choices=["polar", "newton"], default="polar")
+    
     
     # LR Scheduler: DEFAULTS DONE
     parser.add_argument("-max_lr","--max_learning_rate", type=float, default=1e-3,

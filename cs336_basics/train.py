@@ -10,7 +10,7 @@ import einx
 from pathlib import Path
 from cs336_basics.data import get_batch
 from cs336_basics.model import TransformerLM
-from cs336_basics.optim import AdamW, clip_gradients, get_cosine_lr
+from cs336_basics.optim import AdamW, Muon, clip_gradients, get_cosine_lr
 from cs336_basics.checkpoint import save_checkpoint, load_checkpoint
 from cs336_basics.loss import cross_entropy
 
@@ -64,23 +64,18 @@ def train(args):
     os.makedirs(checkpoint_dir, exist_ok=True)
     
     # 3. Set up the model and the optimizer
-    model = TransformerLM(vocab_size=args.vocab_size,
-                          d_model=args.d_model,
-                          num_layers=args.num_layers,
-                          num_heads=args.num_heads,
-                          d_ff=args.d_ff,
-                          rope_theta=args.rope_theta,
-                          context_length=args.context_length,
-                          device=args.device)
-    # We will also save the model config
     model_config = {"vocab_size": args.vocab_size,
               "d_model": args.d_model,
               "num_layers": args.num_layers,
               "num_heads": args.num_heads,
-              "d_ff": args.d_ff,
               "rope_theta": args.rope_theta,
               "context_length": args.context_length,
-              "device": args.device}
+              "device": args.device,
+              "norm_style": args.norm_style,
+              "use_rope": args.use_rope,
+              "ffn_type": args.ffn_type}
+    
+    model = TransformerLM(**model_config)
     
     # Optimization stuff
     if args.device == "mps":
@@ -89,12 +84,30 @@ def train(args):
         model = torch.compile(model)
         torch.set_float32_matmul_precision('high')
     
-    optimizer = AdamW(params=model.parameters(),
-                      lr=args.max_learning_rate,
-                      betas=(args.beta1, args.beta2),
-                      eps=args.adam_eps,
-                      weight_decay=args.weight_decay,
-                      device=args.device)
+    # Set up the optimizer to use
+    if args.use_muon:
+        adam_params = []
+        muon_params = []
+  
+        for name, p in model.named_parameters():
+            # if it is scalar or 1D vector --> Must be optimized by Adam
+            if p.ndim < 2:
+                adam_params.append(p)
+            elif "embedding" in name or "lm_head" in name or "ln_final" in name:
+                adam_params.append(p)
+            else:
+                muon_params.append(p)
+                
+        optimizer1 = AdamW(params=adam_params, lr=args.max_learning_rate, betas=(args.beta1, args.beta2), 
+                           eps=args.adam_eps, weight_decay=args.weight_decay, device=args.device)
+        
+        optimizer2 = Muon(params=muon_params, backend=args.muon_backend, lr=args.max_learning_rate, device=args.device)
+        optimizers = [optimizer1, optimizer2]
+                
+    else:
+        optimizer = AdamW(params=model.parameters(), lr=args.max_learning_rate, betas=(args.beta1, args.beta2),
+                        eps=args.adam_eps, weight_decay=args.weight_decay, device=args.device)
+        optimizers = [optimizer]
     
     iteration = 0
     if args.checkpoint_path:
@@ -103,6 +116,7 @@ def train(args):
         iteration = load_checkpoint(args.checkpoint_path, model, optimizer)
     
     # 4. Training loop
+    # TODO: Fix this to use the optimizers
     model.train()
     
     print("Beginning Training....")

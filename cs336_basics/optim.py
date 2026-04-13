@@ -1,8 +1,63 @@
 from collections.abc import Callable, Iterable
-from typing import Optional
+from typing import Optional, Literal
+from itertools import repeat
 import torch
 import math
 import einx
+
+
+
+# Taken from the Polar Express paper: https://arxiv.org/pdf/2505.16932
+coeffs_list = [
+    (8.28721201814563, -23.595886519098837, 17.300387312530933),
+    (4.107059111542203, -2.9478499167379106, 0.5448431082926601),
+    (3.9486908534822946, -2.908902115962949, 0.5518191394370137),
+    (3.3184196573706015, -2.488488024314874, 0.51004894012372),
+    (2.300652019954817, -1.6689039845747493, 0.4188073119525673),
+    (1.891301407787398, -1.2679958271945868, 0.37680408948524835),
+    (1.8750014808534479, -1.2500016453999487, 0.3750001645474248),
+    (1.875, -1.25, 0.375), # subsequent coeffs equal this numerically
+]
+# safety factor for numerical stability (but exclude last polynomial)
+coeffs_list = [(a / 1.01, b / 1.01**3, c / 1.01**5) 
+               for (a, b, c) in coeffs_list[:-1]] + [coeffs_list[-1]]
+
+@torch.compile
+def PolarExpress(G, steps=5, eps=1e-7):
+    assert G.ndim >= 2
+    X = G.bfloat16() # for speed
+    if G.size(-2) > G.size(-1): 
+        X = X.mT # this reduces FLOPs
+    X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + eps)
+    hs = coeffs_list[:steps] + list(
+    repeat(coeffs_list[-1], steps - len(coeffs_list)))
+    for a, b, c in hs:
+        A = X @ X.mT
+        B = b * A + c * A @ A
+        X = a * X + B @ X # X <- aX + bXˆ3 + cXˆ5
+    if G.size(-2) > G.size(-1): 
+        X = X.mT
+    return X
+
+def newtonschulz5(G, steps=5, eps=1e-7):
+    """
+    This comes from the Muon blog post: https://kellerjordan.github.io/posts/muon/ 
+    I was not explicitely looking for code but the blog post gives direct pytorch for this
+    Instead of giving psuedocode.
+    """
+    assert G.ndim == 2
+    a, b, c = (3.4445, -4.7750, 2.0315)
+    X = G.bfloat16()
+    X /= (X.norm() + eps)
+    if G.size(0) > G.size(1):
+        X = X.T
+    for _ in range(steps):
+        A = X @ X.T
+        B = b * A + c * A @ A
+        X = a * X + B @ X
+    if G.size(0) > G.size(1):
+        X = X.T
+    return X  
 
 def get_cosine_lr(
     it: int,
@@ -63,8 +118,7 @@ def clip_gradients(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float,
     # clip gradient
     scale_factor = max_l2_norm / (norm + eps)
     for grad in grads:
-        grad.data.mul_(scale_factor)
-        
+        grad.data.mul_(scale_factor)   
     
 
 class SGD(torch.optim.Optimizer):
@@ -140,6 +194,60 @@ class AdamW(torch.optim.Optimizer):
                 if "v" not in state:
                     state["v"] = v
                 state["t"] = t + 1 # Increment iteration number.
+                
+        return loss
+    
+
+
+# TODO: NorMuon
+class Muon(torch.optim.Optimizer):
+    """ Muon optimizer"""
+    def __init__(self, backend: Literal["newton", "polar"] | None, params, lr=0.01, mu=0.9, device=None, dtype="float32"):
+        if lr < 0:
+            raise ValueError(f"Invalid learning rate: {lr}")
+        
+        # Default to using Polar --> Expect this to be better than NewtonSchulz5
+        if backend is None:
+            backend = "polar"
+        
+        defaults = {
+            "lr": lr,
+            "mu": mu,
+            "device": device,
+            "backend": backend,
+            "dtype": dtype
+        }
+        super().__init__(params, defaults)
+        
+    def step(self, closure: Optional[Callable] = None):
+        loss = None if closure is None else closure()
+        for group in self.param_groups:
+            lr = group["lr"]
+            mu = group["mu"]
+            device = group["device"]
+            backend = group["backend"]
+            dtype = group["dtype"]
+            
+            for p in group["params"]:
+                if p.grad is None:
+                    continue
+            
+            state = self.state[p]
+            # exponential moving average of the gradient
+            G = state.get("B", torch.zeros(p.shape, device=device, dtype=dtype))
+            G.mul_(mu).add_(p.grad)
+            
+            # Find the cloest orthogonal matrix to the gradient
+            if backend == "polar":
+                O_t = PolarExpress(G)
+            else:
+                O_t = newtonschulz5(G)
+            
+            # Apply the update to p
+            p -= lr * O_t
+            
+            if "B" not in state:
+                state["B"] = G
                 
         return loss
     

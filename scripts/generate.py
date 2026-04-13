@@ -52,7 +52,7 @@ class Model:
             device="cuda",
             max_tokens=300,
             temperature=0.8,
-            top_p=0.9
+            top_p=1
         )
 
 @app.local_entrypoint()
