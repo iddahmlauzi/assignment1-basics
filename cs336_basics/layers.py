@@ -1,6 +1,6 @@
 """
 Core layers and operations for the Transformer LM.
-- Math helpers: softmax, scaled dot-product attention
+- Math helpers: silu, softmax, scaled dot-product attention
 - Custom modules: Linear, Embedding, RMSNorm, RoPE
 """
 
@@ -10,6 +10,35 @@ import math
 import einx
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
+
+
+
+def SiLU(x: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
+    """Swish Activation function"""
+    return x * torch.sigmoid(x)
+
+def softmax(x: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
+    """
+    Given a tensor of inputs, return the output of softmaxing the given `dim`
+    of the input.
+    """
+    # Numerical stability. Make the max value in each become 0
+    x = x - torch.max(x, dim=dim, keepdim=True).values
+    x = torch.exp(x)
+    x /= torch.sum(x, dim=dim, keepdim=True)
+    return x
+
+def scaled_dot_product_attention(Q: Float[Tensor, " ... queries d_k"],
+                       K: Float[Tensor, " ... keys d_k"],
+                       V: Float[Tensor, " ... keys d_v"],
+                       mask: Bool[Tensor, " ... queries keys"] | None = None,
+                       ) -> Float[Tensor, " ... queries d_v"]:
+    
+    d_k = Q.shape[-1]
+    attn = einx.dot("... queries [d_k], ... keys [d_k] -> ... queries keys", Q, K) / math.sqrt(d_k)
+    # The mask is True where we want to attend --> so we need to invert it so it is True where we do not want
+    attn.masked_fill_(~mask, -float("inf"))
+    return einx.dot("... queries keys, ... keys d_v -> ... queries d_v", softmax(attn, dim=-1), V)
 
 
 class Linear(nn.Module):
@@ -27,6 +56,7 @@ class Linear(nn.Module):
         """Calculates xW^T"""
         return einx.dot("d_out d_in, ... d_in -> ... d_out", self.weight, x)
     
+    
 class Embedding(nn.Module):
     """Embedding Layer"""
     def __init__(self, num_embeddings: int, embedding_dim: int, device=None, dtype=None):
@@ -38,6 +68,7 @@ class Embedding(nn.Module):
     
     def forward(self, token_ids: Int[Tensor, " ..."]) -> Float[Tensor, " ... d_model"]:
         return einx.get_at("[vocab_size] d_model, ... -> ... d_model", self.weight, token_ids)
+    
     
 class RMSNorm(nn.Module):
     """Root Mean Square Normalization"""
@@ -85,6 +116,8 @@ class RotaryPositionalEmbedding(nn.Module):
 
         rotated_pair_x = cos * x[..., 0] - sin * x[..., 1]
         rotated_pair_y = sin * x[..., 0] + cos * x[..., 1]
+        
+        # Put them together
         rotated = einx.id("... sequence_length d, ... sequence_length d -> ... sequence_length d (1 + 1)", rotated_pair_x, rotated_pair_y)
         
         return einx.id("... sequence_length d p -> ... sequence_length (d p)", rotated)
