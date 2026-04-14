@@ -3,5 +3,5 @@ base_config: "configs/base_tinystories.yaml"
 group_name: "tinystories_batchsize_sweep"
 
 parameters:
-  max_learning_rate: [0.001]
-  batch_size: [32]
+  max_learning_rate: [0.01]
+  batch_size: [1]

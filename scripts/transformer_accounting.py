@@ -125,10 +125,10 @@ def analyze_flops_breakdown():
 if __name__ == '__main__':
     # Part 3 (a)
     num_parameters=calculate_total_parameters(
-        vocab_size=50257,
-        num_layers=48,
-        d_model=1600,
-        d_ff = 4288
+        vocab_size=32000,
+        num_layers=12,
+        d_model=384,
+        d_ff = 1024
     )
     
     print(f"Total number of parameters: {num_parameters:,} ({num_parameters / 1e9:.2f}B)")
