@@ -29,27 +29,25 @@ class MultiHeadSelfAttention(nn.Module):
         self.dtype = dtype
         self.use_rope = use_rope
         
-        self.q_proj = Linear(in_features=d_model, out_features=d_model, device=device, dtype=dtype)
-        self.k_proj = Linear(in_features=d_model, out_features=d_model, device=device, dtype=dtype)
-        self.v_proj = Linear(in_features=d_model, out_features=d_model, device=device, dtype=dtype)
+        self.qkv_proj = Linear(in_features=d_model, out_features=3*d_model)
         self.output_proj = Linear(in_features=d_model, out_features=d_model, device=device, dtype=dtype)
         
         self.rope = RotaryPositionalEmbedding(theta=rope_theta, d_k=self.d_k, max_seq_len=max_seq_len, device=device, dtype=dtype)
            
     def forward(self, x: Float[Tensor, " ... sequence_length d_in"], token_positions: Int[Tensor, " ... sequence_length"] | None=None) -> Float[Tensor, " ... sequence_length d_out"]:
-        # Make Q, K, V matrices, splitting up the heads
-        Q = einx.id("... sequence_length (h d_k) -> ... h sequence_length d_k", self.q_proj(x), h=self.h)
-        K = einx.id("... sequence_length (h d_k) -> ... h sequence_length d_k", self.k_proj(x), h=self.h)
-        V = einx.id("... sequence_length (h d_v) -> ... h sequence_length d_v", self.v_proj(x), h=self.h)
-
+        # Make Q, K, V matrices, splitting up the heads        
+        qkv = einx.id("... sequence_length (n h d_k) -> n ... h sequence_length d_k", self.qkv_proj(x), h=self.h, n=3)
+        QK = qkv[0:2]
         seq_len = x.shape[-2]
+        
         # Causal Masking
         mask = torch.tril(torch.ones(seq_len, seq_len, device=self.device, dtype=torch.bool))
         # RoPE
         if self.use_rope:
             token_positions = token_positions if token_positions is not None else torch.arange(seq_len, device=self.device, dtype=self.dtype)
-            Q = self.rope(Q, token_positions)
-            K = self.rope(K, token_positions)
+            QK = self.rope(QK, token_positions)
+        Q, K = QK[0], QK[1]
+        V = qkv[2]
         attn = scaled_dot_product_attention(Q, K, V, mask=mask)
         
         # Concatenate the heads
