@@ -14,6 +14,7 @@ from cs336_basics.layers import Linear, Embedding, RMSNorm, RotaryPositionalEmbe
 from cs336_basics.model import SwiGLU, MultiHeadSelfAttention, TransformerBlock, TransformerLM
 from cs336_basics.loss import cross_entropy
 from cs336_basics.optim import AdamW, get_cosine_lr, clip_gradients
+from cs336_basics.data import get_batch
 
 def run_linear(
     d_in: int,
