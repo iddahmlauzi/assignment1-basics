@@ -3,7 +3,7 @@ import torch.nn as nn
 import einx
 from torch import Tensor
 from jaxtyping import Bool, Float, Int
-from cs336_basics.layers import Linear, SiLU, scaled_dot_product_attention, RotaryPositionalEmbedding
+from cs336_basics.layers import Linear, Embedding, SiLU, scaled_dot_product_attention, RotaryPositionalEmbedding, RMSNorm
 
 
 
@@ -20,7 +20,8 @@ class SwiGLU(nn.Module):
     
     
 class MultiHeadSelfAttention(nn.Module):
-    def __init__(self, d_model: int, num_heads: int, rope_theta: float=10000, max_seq_len: int=1024, use_rope=True, device=None, dtype=None):
+    def __init__(self, d_model: int, num_heads: int, rope_theta: float=10000, max_seq_len: int=1024, 
+                use_rope=True, device=None, dtype=None):
         super().__init__()
         
         self.h = num_heads
@@ -33,6 +34,7 @@ class MultiHeadSelfAttention(nn.Module):
         self.output_proj = Linear(in_features=d_model, out_features=d_model, device=device, dtype=dtype)
         
         self.rope = RotaryPositionalEmbedding(theta=rope_theta, d_k=self.d_k, max_seq_len=max_seq_len, device=device, dtype=dtype)
+        
            
     def forward(self, x: Float[Tensor, " ... sequence_length d_in"], token_positions: Int[Tensor, " ... sequence_length"] | None=None) -> Float[Tensor, " ... sequence_length d_out"]:
         # Make Q, K, V matrices, splitting up the heads        
@@ -53,12 +55,76 @@ class MultiHeadSelfAttention(nn.Module):
         # Concatenate the heads
         attn = einx.id("... h sequence_length d_v -> ... sequence_length (h d_v)", attn, h=self.h)
         return self.output_proj(attn)
-        
-        
-        
-        
-        
     
+    
+class TransformerBlock(nn.Module):
+    """One single layer in the LLM"""
+    def __init__(self, d_model: int, num_heads: int, d_ff: int, max_seq_len: int, rope_theta: float,
+                use_rope=True, norm_type: str | None=None, device=None, dtype=None):
+        super().__init__()
+        
+        self.norm_type = norm_type
+        self.ln1 = RMSNorm(d_model=d_model, device=device, dtype=dtype)
+        self.attn = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads, rope_theta=rope_theta, 
+                                           max_seq_len=max_seq_len, use_rope=use_rope, device=device, dtype=dtype)
+        self.ln2 = RMSNorm(d_model=d_model, device=device, dtype=dtype)
+        self.ffn = SwiGLU(d_model=d_model, d_ff=d_ff, device=device, dtype=dtype)
+        
+        
+    def forward(self, x: Float[Tensor, " batch sequence_length d_model"]) -> Float[Tensor, " batch sequence_length d_model"]:      
+        # No norm --> only for ablation
+        if self.norm_type == "none":
+            z = x + self.attn(x)
+            return z + self.ffn(z)
+        
+        # Post-Norm Transformer Block
+        elif self.norm_type == "post":
+            z = self.ln1(x + self.attn(x))
+            return self.ln2(z + self.ffn(z))
+        
+        # Default to pre-norm
+        z = x + self.attn(self.ln1(x))
+        return z + self.ffn(self.ln2(z))
+    
+
+class TransformerLM(nn.Module):
+    """Full Model"""
+    def __init__(self, vocab_size: int, context_length: int,
+                d_model: int, num_layers: int, num_heads: int,
+                d_ff: int, rope_theta: float, use_rope=True,
+                norm_style="pre", device=None, dtype=None
+                ):
+        super().__init__()
+        
+        self.token_embeddings = Embedding(num_embeddings=vocab_size, embedding_dim=d_model, device=device, dtype=dtype)
+        self.layers = nn.ModuleList([TransformerBlock(d_model=d_model,
+                                                         num_heads=num_heads,
+                                                         d_ff=d_ff,
+                                                         max_seq_len=context_length,
+                                                         rope_theta=rope_theta,
+                                                         use_rope=use_rope,
+                                                         norm_type=norm_style,
+                                                         device=device,
+                                                         dtype=dtype) for _ in range(num_layers)])
+        self.ln_final = RMSNorm(d_model=d_model, device=device, dtype=dtype)
+        self.lm_head = Linear(in_features=d_model, out_features=vocab_size, device=device, dtype=dtype)
+        
+    def forward(self, input: Int[Tensor, " batch_size sequence_length"]) ->  Float[Tensor, " batch_size sequence_length vocab_size"]:
+        
+        # Initial Embeddings
+        x = self.token_embeddings(input)
+        
+        # Pass through Transformer layers
+        for layer in self.layers:
+            x = layer(x)
+        
+        # Get final logits
+        x = self.ln_final(x)
+        return self.lm_head(x)
+        
+        
+        
+        
         
         
         

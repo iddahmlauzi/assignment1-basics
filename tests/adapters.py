@@ -11,7 +11,7 @@ from jaxtyping import Bool, Float, Int
 from torch import Tensor
 from cs336_basics.tokenization import pretokenize, train_bpe_tokenizer, Tokenizer
 from cs336_basics.layers import Linear, Embedding, RMSNorm, RotaryPositionalEmbedding, SiLU, softmax, scaled_dot_product_attention
-from cs336_basics.model import SwiGLU, MultiHeadSelfAttention
+from cs336_basics.model import SwiGLU, MultiHeadSelfAttention, TransformerBlock, TransformerLM
 
 def run_linear(
     d_in: int,
@@ -296,8 +296,10 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    transformer = TransformerBlock(d_model=d_model, num_heads=num_heads, d_ff=d_ff, max_seq_len=max_seq_len, theta=theta)
-    transformer.load_state_dict(weights)
+    transformer = TransformerBlock(d_model=d_model, num_heads=num_heads, d_ff=d_ff, max_seq_len=max_seq_len, rope_theta=theta)
+    qkv_proj_weight = torch.cat((weights["attn.q_proj.weight"], weights["attn.k_proj.weight"], weights["attn.v_proj.weight"]), dim=0)
+    weights["attn.qkv_proj.weight"] = qkv_proj_weight
+    transformer.load_state_dict(weights, strict=False)
     return transformer(in_features)
 
 
@@ -387,7 +389,13 @@ def run_transformer_lm(
                                    d_ff=d_ff,
                                    rope_theta=rope_theta,
                                    context_length=context_length)
-    transformer_lm.load_state_dict(weights)
+    
+    for i in range(num_layers):
+        qkv_proj_weight = torch.cat((weights[f"layers.{i}.attn.q_proj.weight"], 
+                                     weights[f"layers.{i}.attn.k_proj.weight"], 
+                                     weights[f"layers.{i}.attn.v_proj.weight"]), dim=0)
+        weights[f"layers.{i}.attn.qkv_proj.weight"] = qkv_proj_weight
+    transformer_lm.load_state_dict(weights, strict=False)
     return transformer_lm(in_indices)
 
 
