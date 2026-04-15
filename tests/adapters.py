@@ -15,6 +15,7 @@ from cs336_basics.model import SwiGLU, MultiHeadSelfAttention, TransformerBlock,
 from cs336_basics.loss import cross_entropy
 from cs336_basics.optim import AdamW, get_cosine_lr, clip_gradients
 from cs336_basics.data import get_batch
+from cs336_basics.checkpoint import save_checkpoint, load_checkpoint
 
 def run_linear(
     d_in: int,
