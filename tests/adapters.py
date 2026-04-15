@@ -13,7 +13,7 @@ from cs336_basics.tokenization import pretokenize, train_bpe_tokenizer, Tokenize
 from cs336_basics.layers import Linear, Embedding, RMSNorm, RotaryPositionalEmbedding, SiLU, softmax, scaled_dot_product_attention
 from cs336_basics.model import SwiGLU, MultiHeadSelfAttention, TransformerBlock, TransformerLM
 from cs336_basics.loss import cross_entropy
-from cs336_basics.optim import AdamW
+from cs336_basics.optim import AdamW, get_cosine_lr, clip_gradients
 
 def run_linear(
     d_in: int,

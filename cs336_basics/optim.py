@@ -4,6 +4,53 @@ import torch
 import math
 
 
+def clip_gradients(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float, eps=1e-6) -> None:
+    """
+    Given a set of parameters, clip their combined gradients to have l2 norm at most max_l2_norm.
+    """
+    # How do I calculate the l2 norm
+    total = 0
+    for p in parameters:
+        if p.grad is None:
+            continue
+        total += torch.sum(p.grad.data ** 2)
+    
+    l2_norm = math.sqrt(total)
+    
+    # No clipping needed
+    if l2_norm <= max_l2_norm:
+        return 
+    
+    # Clip the Gradients (in-place)
+    for p in parameters:
+        if p.grad is None:
+            continue
+        p.grad.data.mul_(max_l2_norm / (l2_norm + eps))
+    
+
+def get_cosine_lr(it: int,
+                  max_learning_rate: float,
+                  min_learning_rate: float,
+                  warmup_iters: int,
+                  cosine_cycle_iters: int):
+    """
+    Given the parameters of a cosine learning rate decay schedule (with linear
+    warmup) and an iteration number, return the learning rate at the given
+    iteration under the specified schedule.
+    """
+    
+    # Warm-Up 
+    if it < warmup_iters:
+        return it / warmup_iters * max_learning_rate
+    
+    # Cosine Annealing
+    if it <= cosine_cycle_iters:
+        cos_term = math.cos((it - warmup_iters) / (cosine_cycle_iters - warmup_iters) * math.pi)
+        return min_learning_rate + 0.5 * (1 + cos_term) * (max_learning_rate - min_learning_rate)
+    
+    return min_learning_rate
+    
+
 class SGD(torch.optim.Optimizer):
     def __init__(self, params, lr=1e-3):
         if lr < 0:
@@ -36,7 +83,7 @@ class AdamW(torch.optim.Optimizer):
             "eps": eps,
             "weight_decay": weight_decay,
             "device": device,
-            "dtype": dtype
+            "dtype": dtype,
         }
         super().__init__(params, defaults)
         
@@ -79,6 +126,38 @@ class AdamW(torch.optim.Optimizer):
                 state["t"] += 1
                 
         return loss
+
+
+# Figure it our here: https://docs.pytorch.org/docs/stable/generated/torch.optim.Muon.html 
+# Also look into Polar Express 
+# And NorMuon
+# https://www.youtube.com/watch?v=-Cto66pAUXQ 
+# class Muon(torch.optim.Optimizer):
+#     def __init__(self, params, lr=1e-3, momentum=0.95, weight_decay=1e-2, device=None, dtype=None):
+#         defaults = {
+#             "lr": lr,
+#             "momentum": momentum,
+#             "weight_decay": weight_decay,
+#             "device": device,
+#             "dtype": dtype
+#         }
+#         super().__init__(params, defaults)
+    
+#     def step(self, closure: Optional[Callable] = None):
+#         loss = None if closure is None else closure()
+#         for group in self.param_groups:
+#             lr = group["lr"]
+#             momentum = group["momentum"]
+#             weight_decay = group["weight_decay"]
+#             device = group["device"]
+#             dtype = group["dtype"]
+            
+#             for p in group["params"]:
+#                 if p.grad is None:
+#                     continue
+                
+#                 grad = p.grad.data
+#                 state = self.state[p]
                 
                 
                 
