@@ -12,6 +12,8 @@ from torch import Tensor
 from cs336_basics.tokenization import pretokenize, train_bpe_tokenizer, Tokenizer
 from cs336_basics.layers import Linear, Embedding, RMSNorm, RotaryPositionalEmbedding, SiLU, softmax, scaled_dot_product_attention
 from cs336_basics.model import SwiGLU, MultiHeadSelfAttention, TransformerBlock, TransformerLM
+from cs336_basics.loss import cross_entropy
+from cs336_basics.optim import AdamW
 
 def run_linear(
     d_in: int,
@@ -389,7 +391,7 @@ def run_transformer_lm(
                                    d_ff=d_ff,
                                    rope_theta=rope_theta,
                                    context_length=context_length)
-    
+    torch.compile(transformer_lm, fullgraph=True)
     for i in range(num_layers):
         qkv_proj_weight = torch.cat((weights[f"layers.{i}.attn.q_proj.weight"], 
                                      weights[f"layers.{i}.attn.k_proj.weight"], 
