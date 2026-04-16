@@ -10,7 +10,7 @@ import einx
 from pathlib import Path
 from cs336_basics.data import get_batch
 from cs336_basics.model import TransformerLM
-from cs336_basics.optim import AdamW, clip_gradients, get_cosine_lr
+from cs336_basics.optim import AdamW, clip_gradients, get_cosine_lr, Muon
 from cs336_basics.checkpoint import save_checkpoint, load_checkpoint
 from cs336_basics.loss import cross_entropy
 
@@ -88,28 +88,32 @@ def train(args):
         model = torch.compile(model)
         torch.set_float32_matmul_precision('high')
     
-    # # Set up the optimizer to use
-    # if args.use_muon:
-    #     adam_params = []
-    #     muon_params = []
+    # Set up the optimizer to use
+    if args.use_muon:
+        adam_params = []
+        muon_params = []
   
-    #     for name, p in model.named_parameters():
-    #         # if it is scalar or 1D vector --> Must be optimized by Adam
-    #         if p.ndim < 2:
-    #             adam_params.append(p)
-    #         elif "embedding" in name or "lm_head" in name or "ln_final" in name:
-    #             adam_params.append(p)
-    #         else:
-    #             muon_params.append(p)
+        for name, p in model.named_parameters():
+            # if it is scalar or 1D vector --> Must be optimized by Adam
+            # This encompasses all layer Norms
+            if p.ndim < 2:
+                adam_params.append(p)
+            elif "embedding" in name or "lm_head" in name or "ln_final" in name:
+                adam_params.append(p)
+            else:
+                muon_params.append(p)
                 
-    #     optimizer1 = AdamW(params=adam_params, lr=args.max_learning_rate, betas=(args.beta1, args.beta2), 
-    #                        eps=args.adam_eps, weight_decay=args.weight_decay, device=args.device)
+        optimizer1 = AdamW(params=adam_params, lr=args.max_learning_rate, betas=(args.beta1, args.beta2), 
+                           eps=args.adam_eps, weight_decay=args.weight_decay, device=args.device)
         
-    #     optimizer2 = Muon(params=muon_params, backend=args.muon_backend, lr=args.max_learning_rate, device=args.device)
-    #     optimizers = [optimizer1, optimizer2]
+        optimizer2 = Muon(params=muon_params, lr=args.max_learning_rate, momentum=args.muon_momentum, 
+                          nesterov=args.use_nesterov, device=args.device, dtype=args.dtype)
+        optimizers = [optimizer1, optimizer2]
                 
-    optimizer = AdamW(params=model.parameters(), lr=args.max_learning_rate, betas=(args.beta1, args.beta2),
-                    eps=args.adam_eps, weight_decay=args.weight_decay, device=args.device)
+    else:
+        optimizer = AdamW(params=model.parameters(), lr=args.max_learning_rate, betas=(args.beta1, args.beta2),
+                        eps=args.adam_eps, weight_decay=args.weight_decay, device=args.device)
+        optimizers = [optimizer]
     
     iteration = 0
     if args.checkpoint_path:
@@ -118,14 +122,14 @@ def train(args):
         iteration = load_checkpoint(args.checkpoint_path, model, optimizer)
     
     # 4. Training loop
-    # TODO: Fix this to use the optimizers
     model.train()
     
     print("Beginning Training....")
     start_time = time.time()
     for t in range(iteration, args.num_steps):
         
-        optimizer.zero_grad()
+        for optimizer in optimizers:
+            optimizer.zero_grad()
         
         # Sample a batch
         x, y = get_batch(train_dataset, batch_size=args.batch_size, 
@@ -137,15 +141,17 @@ def train(args):
         loss.backward()
         
         # Adjust gradients and learning rate to stabilize training
+        # The hope is that I can use the same lr for Muon and Adam because we adjusted it in Muon Class
         clip_gradients(parameters=model.parameters(), max_l2_norm=args.max_l2_norm)
         learning_rate  = get_cosine_lr(t, 
                                        max_learning_rate=args.max_learning_rate,
                                        min_learning_rate=args.min_learning_rate, 
                                        warmup_iters=args.warmup_iters,
                                        cosine_cycle_iters=args.cosine_cycle_iters)
-        for group in optimizer.param_groups:
-            group['lr'] = learning_rate
-        optimizer.step()
+        for optimizer in optimizers:
+            for group in optimizer.param_groups:
+                group['lr'] = learning_rate
+            optimizer.step()
         
         # Save the checkpoint
         if t > 0 and t % args.save_steps == 0:

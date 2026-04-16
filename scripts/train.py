@@ -62,9 +62,9 @@ def main(config: str):
     parser.add_argument("--weight_decay", type=float, default=1e-1)
     
     # Muon Optimizer
-    parser.add_argument("--use_muon", action="store_true")
-    parser.add_argument("--muon_mu", type=float, default=0.9)
-    parser.add_argument("--muon_backend", choices=["polar", "newton"], default="polar")
+    parser.add_argument("--use_muon", type=bool, default=True)
+    parser.add_argument("--muon_momentum", type=float, default=0.95)
+    parser.add_argument("--use_nesterov", type=bool, default=True)
     
     
     # LR Scheduler: DEFAULTS DONE

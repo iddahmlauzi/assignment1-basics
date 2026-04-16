@@ -159,11 +159,7 @@ polar_express_coefficients = [
 (3.3184196573706015, -2.488488024314874, 0.51004894012372),
 (2.300652019954817, -1.6689039845747493, 0.4188073119525673)]
 
-def polar_express(G: Float[Tensor, "..."], eps=1e-2):
-    # Okay so technically this should only work for 2D+ matrices
-    if G.ndim() < 2:
-        raise ValueError(f"Does not accept 1D tensors but got a gradient of shape {G.shape}")
-    
+def polar_express(G: Float[Tensor, "..."], eps=1e-2):    
     # Reduces memory cost when calculating X^TX
     if G.shape[-2] > G.shape[-1]:
         G = G.transpose(-2, -1)
@@ -182,16 +178,17 @@ def polar_express(G: Float[Tensor, "..."], eps=1e-2):
     return X
     
 
-# Figure it our here: https://docs.pytorch.org/docs/stable/generated/torch.optim.Muon.html 
+# Used the psuedocode here: https://docs.pytorch.org/docs/stable/generated/torch.optim.Muon.html 
 # Also look into Polar Express 
 # And NorMuon
 # https://www.youtube.com/watch?v=-Cto66pAUXQ 
 class Muon(torch.optim.Optimizer):
-    def __init__(self, params, lr=1e-3, momentum=0.95, weight_decay=1e-2, device=None, dtype=None):
+    def __init__(self, params, lr=1e-3, momentum=0.95, weight_decay=1e-1, nesterov=True, device=None, dtype=None):
         defaults = {
             "lr": lr,
             "momentum": momentum,
             "weight_decay": weight_decay,
+            "nesterov": nesterov,
             "device": device,
             "dtype": dtype
         }
@@ -203,6 +200,7 @@ class Muon(torch.optim.Optimizer):
             lr = group["lr"]
             momentum = group["momentum"]
             weight_decay = group["weight_decay"]
+            nesterov = group["nesterov"]
             device = group["device"]
             dtype = group["dtype"]
             
@@ -210,8 +208,53 @@ class Muon(torch.optim.Optimizer):
                 if p.grad is None:
                     continue
                 
-                grad = p.grad.data
+                grad = p.grad.data 
                 state = self.state[p]
+                
+                # Initialize State
+                if "m" not in state:
+                    state["m"] = torch.zeros(grad.shape, device=device, dtype=dtype)
+                    # Okay so we will store the extra mantissa bits for the weight here
+                    # So the weights will technically be in fp32 
+                    state["weight_mantissa"] = torch.zeros(grad.shape, device=device, dtype=torch.uint16)
+                  
+                m = state["m"]
+                mantissa = state["weight_mantissa"]
+                
+                # Update the gradient buffer
+                m.mul_(momentum).add_(grad)
+                
+                if nesterov:
+                    m.mul_(momentum).add_(grad)
+                    
+                # Then we want to orthogonalize the gradient
+                O_t = polar_express(grad)
+                
+                # Update parameters
+                # First, we want to make the data be 32 bits
+                # What we do is view the underlying data as 16 bits (unsighned)
+                # Then cast that to uint32 so we have a 32 bit contained
+                int32_weights = p.data.view(torch.uint16).to(torch.int32)
+                
+                # Then we add the mantissa bits --> Now have a full fp32 weight
+                int32_weights = (int32_weights << 16) | mantissa.to(torch.int32)
+                fp32_weights = int32_weights.view(torch.float32)
+                fp32_weights.sub_(fp32_weights, alpha=weight_decay*lr)   # Weight Decay
+                
+                
+                A, B = p.grad.shape
+                a_t = 0.2 * lr * math.sqrt(max(A, B)) # Adjusted learning rate for iteration t --> Match the RMS of ADAM
+                fp32_weights.sub_(O_t, alpha=a_t)
+                
+                # Now we want to move back the weights
+                int32_weights = fp32_weights.view(torch.int32)
+                state["weight_mantissa"] = int32_weights & 0xFFFF # Low 16 bits
+                bf16weight = (int32_weights >> 16).to(torch.uint16).view(torch.bfloat16)
+                p.data = bf16weight
+                
+                state["t"] += 1
+                
+        return loss
                 
                 
                 
