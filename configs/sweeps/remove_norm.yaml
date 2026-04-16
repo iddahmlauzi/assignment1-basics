@@ -2,5 +2,5 @@ base_config: "configs/base_tinystories.yaml"
 group_name: "remove_norm_ablations"
 
 parameters:
-  max_learning_rate: [0.002, 0.0008]
+  max_learning_rate: [0.002]
   use_norm: [False]

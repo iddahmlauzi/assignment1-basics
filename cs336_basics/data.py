@@ -23,11 +23,9 @@ def get_batch(
     offsets = np.expand_dims(offsets, 0) # (1, context_len)
     all_indices = start_indices + offsets # (batch_size, context_len)
     
-    targets = torch.from_numpy(dataset[all_indices + 1])
-    inputs = torch.from_numpy(dataset[all_indices])
-    
-    inputs.to(device)
-    targets.to(device)
+    inputs, targets = dataset[all_indices], dataset[all_indices + 1]
+    inputs =  torch.as_tensor(inputs, device=device, dtype=torch.long)
+    targets = torch.as_tensor(targets, device=device, dtype=torch.long)
     
     return inputs, targets
     

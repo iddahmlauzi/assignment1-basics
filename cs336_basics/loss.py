@@ -1,9 +1,7 @@
-import einx
 import torch
 from jaxtyping import Float, Int
 from torch import Tensor
 
-# Should I torch compile this?
 def cross_entropy(inputs: Float[Tensor, "... vocab_size"],
                   targets: Int[Tensor, "..."]) -> Float[Tensor, ""]:
     
@@ -12,12 +10,15 @@ def cross_entropy(inputs: Float[Tensor, "... vocab_size"],
     loss across examples.
     """
     
+    #batch, seq, vocab_len
+    # logits 
+    
     # Numerical stability to avoid NaN values
-    logits = inputs - torch.max(inputs, dim=1, keepdim=True).values
+    logits = inputs - torch.max(inputs, dim=-1, keepdim=True).values
     target_logits = torch.gather(logits, dim=-1, index=targets.unsqueeze(-1))
     log_term = torch.log(torch.sum(torch.exp(logits), dim=-1))
 
-    return torch.mean(log_term - target_logits)
+    return torch.mean(log_term - target_logits.squeeze())
     
     
     

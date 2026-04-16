@@ -13,7 +13,7 @@ from torch import Tensor
 
 
 
-def SiLU(x: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
+def silu(x: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
     """Swish Activation function"""
     return x * torch.sigmoid(x)
 
@@ -25,8 +25,7 @@ def softmax(x: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
     # Numerical stability. Make the max value in each become 0
     x = x - torch.max(x, dim=dim, keepdim=True).values
     x = torch.exp(x)
-    x /= torch.sum(x, dim=dim, keepdim=True)
-    return x
+    return x / torch.sum(x, dim=dim, keepdim=True)
 
 def scaled_dot_product_attention(Q: Float[Tensor, " ... queries d_k"],
                        K: Float[Tensor, " ... keys d_k"],

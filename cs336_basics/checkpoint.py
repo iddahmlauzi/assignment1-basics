@@ -8,14 +8,18 @@ def save_checkpoint(
     optimizer: torch.optim.Optimizer,
     iteration: int,
     out: str | os.PathLike | BinaryIO | IO[bytes],
+    config: dict | None=None
 ):
     """
     Given a model, optimizer, and an iteration number, serialize them to disk.
     """
+    # Fix cause torch.compile will ass the _orig_mod predix
+    unwrapped_model = getattr(model, "_orig_mod", model)
     state_dict = {
         "iteration": iteration,
-        "model": model.state_dict(),
-        "optimizer": optimizer.state_dict()
+        "model": unwrapped_model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "config": config
     }
     torch.save(state_dict, out)
     
