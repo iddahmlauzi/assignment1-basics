@@ -2,10 +2,12 @@ vocab_size: 32000
 context_length: 1024
 d_model: 768
 rope_theta: 10000
-num_layers: 13
+num_layers: 12
 num_heads: 12
-batch_size: 192
+batch_size: 128
 total_tokens_processed: 2820000000
+save_steps: 5000
+log_steps: 100
 
 data_path: "/root/data/openwebtext-train-encoded.bin"
 val_path: "/root/data/openwebtext-valid-encoded.bin"

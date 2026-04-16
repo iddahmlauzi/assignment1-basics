@@ -65,6 +65,7 @@ def main(config: str):
     
     
     # LR Scheduler: DEFAULTS DONE
+    # TODO: Fix these values
     parser.add_argument("-max_lr","--max_learning_rate", type=float, default=1e-3,
                         help="alpha_max, the maximum learning rate for cosine learning rate schedule (with warmup).")
     parser.add_argument("-min_lr","--min_learning_rate", type=float, default=None, 
@@ -88,7 +89,7 @@ def main(config: str):
                         help="Path to the loaded checkpoint")
     parser.add_argument("--device", type=str)
     parser.add_argument("--eval_steps", type=int, default=500)
-    parser.add_argument("--eval_batches", type=int, default=20,
+    parser.add_argument("--eval_batches", type=int, default=100,
                         help="Number of batches to sample from val dataset during evaluation")
     parser.add_argument("--save_steps", type=int, default=20000)
     parser.add_argument("--log_steps", type=int, default=100)
@@ -134,6 +135,12 @@ def main(config: str):
         # Calculate num_steps dynamically so it respects the sweep batch size
         if args.get("total_tokens_processed"):
             args["num_steps"] = round(args["total_tokens_processed"] / (args["batch_size"] * args["context_length"]))
+            
+        # Calculate the cosine lr schedule stuff dynamically too
+        # Default warmup_iters to be 2.5% of max iters
+        args["warmup_iters"] = round(0.025 * args["num_steps"])
+        # So the cosine schedule reaches min 
+        args["cosine_cycle_iters"] = args["num_steps"]
         
         # Auto-generate a clean W&B run name (e.g., "lr_0.001_d_model_512")
         name_parts = [f"{k}_{v}" for k, v in combo.items()]

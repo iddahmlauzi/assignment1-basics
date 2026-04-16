@@ -112,7 +112,7 @@ class TransformerLM(nn.Module):
     """Full Model"""
     def __init__(self, vocab_size: int, context_length: int,
                 d_model: int, num_layers: int, num_heads: int, rope_theta: float, use_rope=True,
-                norm_style="pre", ffn_type="swiglu", d_ff: int | None=None, device=None, dtype=None
+                norm_style="pre", ffn_type="swiglu", d_ff: int | None=None, device=None, dtype=torch.bfloat16
                 ):
         super().__init__()
         

@@ -10,9 +10,6 @@ def cross_entropy(inputs: Float[Tensor, "... vocab_size"],
     loss across examples.
     """
     
-    #batch, seq, vocab_len
-    # logits 
-    
     # Numerical stability to avoid NaN values
     logits = inputs - torch.max(inputs, dim=-1, keepdim=True).values
     target_logits = torch.gather(logits, dim=-1, index=targets.unsqueeze(-1))

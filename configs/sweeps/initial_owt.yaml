@@ -2,3 +2,4 @@ base_config: "configs/base_owt.yaml"
 group_name: "leaderboard"
 
 parameters:
+  max_learning_rate: [0.01, 0.001, 0.005]

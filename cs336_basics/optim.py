@@ -109,19 +109,38 @@ class AdamW(torch.optim.Optimizer):
                     state["t"] = 1
                     state["m"] = torch.zeros(grad.shape, device=device, dtype=dtype)
                     state["v"] = torch.zeros(grad.shape, device=device, dtype=dtype)
+                    # Okay so we will store the extra mantissa bits for the weight here
+                    # So the weights will technically be in fp32 
+                    state["weight_mantissa"] = torch.zeros(grad.shape, device=device, dtype=torch.uint16)
                 
                 t = state["t"]   
                 m = state["m"]
                 v = state["v"]
+                mantissa = state["mantissa"]
                 
                 # Update Moment Estimates
                 m.mul_(beta1).add_(grad, alpha=1-beta1)
                 v.mul_(beta2).add_(grad**2, alpha=1-beta2)
                 
                 # Update parameters
-                p.data.sub_(p.data, alpha=weight_decay*lr)          # Weight Decay
+                # First, we want to make the data be 32 bits
+                # What we do is view the underlying data as 16 bits (unsighned)
+                # Then cast that to uint32 so we have a 32 bit contained
+                int32_weights = p.data.view(torch.uint16).to(torch.uint32)
+                
+                # Then we add the mantissa bits --> Now have a full fp32 weight
+                int32_weights = (int32_weights << 16) | mantissa
+                fp32_weights = int32_weights.view(torch.float32)
+                
+                fp32_weights.sub_(fp32_weights, alpha=weight_decay*lr)          # Weight Decay
                 a_t = lr * math.sqrt(1 - beta2**t) / (1 - beta1**t) # Adjusted learning rate for iteration t
-                p.data.sub_(m / (torch.sqrt(v) + eps), alpha=a_t)
+                fp32_weights.sub_(m / (torch.sqrt(v) + eps), alpha=a_t)
+                
+                # Now we want to move back the weights
+                int32_weights = fp32_weights.view(torch.uint32)
+                state["mantissa"] = int32_weights & 0xFFFF # Low 16 bits
+                bf16weight = (int32_weights >> 16).to(torch.uint16).view(torch.bfloat16)
+                p.data = bf16weight
                 
                 state["t"] += 1
                 
