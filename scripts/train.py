@@ -79,6 +79,7 @@ def main(config: str):
     # Gradient Clipping: DEFAULTS DONE
     parser.add_argument("--max_l2_norm", type=float, default=1,
                         help="A positive value containing the maximum l2-norm.")
+    parser.add_argument("--use_z_loss", type=bool, default=True)
     
     # Training
     parser.add_argument("--batch_size", type=int, default=64)

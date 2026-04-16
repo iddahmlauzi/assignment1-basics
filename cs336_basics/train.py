@@ -132,7 +132,8 @@ def train(args):
                          context_length=args.context_length, device=args.device)
         
         logits = model(x)
-        loss = cross_entropy(inputs=logits, targets=y)
+        # We use z-loss just for model training (not for evals)
+        loss = cross_entropy(inputs=logits, targets=y, use_z_loss=args.use_z_loss)
         loss.backward()
         
         # Adjust gradients and learning rate to stabilize training
