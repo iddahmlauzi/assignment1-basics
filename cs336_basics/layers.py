@@ -48,13 +48,18 @@ def scaled_dot_product_attention(Q: Float[Tensor, " ... queries d_k"],
 
 class Linear(nn.Module):
     """Linear tranformation module"""
-    def __init__(self, in_features: int, out_features: int, device=None, dtype=None):
+    def __init__(self, in_features: int, out_features: int, zero_init=False, device=None, dtype=None):
         super().__init__()
         
         std = math.sqrt(2 / (in_features + out_features))
         # row-major ordering
         weight_tensor = torch.empty(out_features, in_features, dtype=dtype, device=device)
-        nn.init.trunc_normal_(weight_tensor, a=-3*std, b=3*std)
+        
+        # Zero-Init of the projection layers
+        if zero_init:
+            nn.init.zeros_(weight_tensor)
+        else:
+            nn.init.trunc_normal_(weight_tensor, a=-3*std, b=3*std)
         self.weight = nn.Parameter(weight_tensor)
         
     def forward(self, x: Float[Tensor, " ... d_in"]) -> Float[Tensor, " ... d_out"]:

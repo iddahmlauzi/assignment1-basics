@@ -45,7 +45,8 @@ class MultiHeadSelfAttention(nn.Module):
         self.layer_norm = RMSNorm(d_model=d_model, device=device, dtype=dtype) if use_qk_norm else torch.nn.Identity()
             
         self.qkv_proj = Linear(in_features=d_model, out_features=3*d_model, device=device, dtype=dtype)
-        self.output_proj = Linear(in_features=d_model, out_features=d_model, device=device, dtype=dtype)
+        # TODO: Probably don't hardcode this --> just too lazy to move it rn
+        self.output_proj = Linear(in_features=d_model, out_features=d_model, zero_init=True, device=device, dtype=dtype)
         
         self.rope = RotaryPositionalEmbedding(theta=rope_theta, d_k=self.d_k, max_seq_len=max_seq_len, device=device, dtype=dtype)
         
@@ -150,7 +151,8 @@ class TransformerLM(nn.Module):
                                                          device=device,
                                                          dtype=dtype) for _ in range(num_layers)])
         self.ln_final = RMSNorm(d_model=d_model, device=device, dtype=dtype)
-        self.lm_head = Linear(in_features=d_model, out_features=vocab_size, device=device, dtype=dtype)
+        # TODO: Also don't hardcode this
+        self.lm_head = Linear(in_features=d_model, out_features=vocab_size, zero_init=True, device=device, dtype=dtype)
         
     def forward(self, input: Int[Tensor, " batch_size sequence_length"]) ->  Float[Tensor, " batch_size sequence_length vocab_size"]:
         
