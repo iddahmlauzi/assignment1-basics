@@ -50,6 +50,7 @@ def main(config: str):
     parser.add_argument("--num_heads", type=int, default=16)
     parser.add_argument("--norm_style", type=str, default="pre")
     parser.add_argument("--use_rope", type=bool, default=True)
+    parser.add_argument("--use_qk_norm", type=bool, default=True)
     parser.add_argument("--ffn_type", type=str, default="swiglu")
     
     # ADAM Optimizer Hyperparameters: DEFAULTS DONE

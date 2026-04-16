@@ -2,4 +2,5 @@ base_config: "configs/base_owt.yaml"
 group_name: "leaderboard"
 
 parameters:
-  max_learning_rate: [0.002]
+ num_heads: [6]
+ batch_size: [192]

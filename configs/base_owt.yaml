@@ -1,11 +1,11 @@
 vocab_size: 32000
-context_length: 1024
-d_model: 768
+context_length: 512
+d_model: 1024
 rope_theta: 10000
-num_layers: 12
-num_heads: 12
-batch_size: 128
-total_tokens_processed: 2820000000
+num_layers: 13
+num_heads: 8
+batch_size: 192
+num_steps: 10000
 save_steps: 5000
 log_steps: 100
 

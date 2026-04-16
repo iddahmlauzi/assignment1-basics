@@ -32,7 +32,7 @@ class SwiGLU(nn.Module):
     
 class MultiHeadSelfAttention(nn.Module):
     def __init__(self, d_model: int, num_heads: int, rope_theta: float=10000, max_seq_len: int=1024, 
-                use_rope=True, device=None, dtype=None):
+                use_rope=True, use_qk_norm=False, cap_logits=False, device=None, dtype=None):
         super().__init__()
         
         self.h = num_heads
@@ -40,7 +40,10 @@ class MultiHeadSelfAttention(nn.Module):
         self.device = device
         self.dtype = dtype
         self.use_rope = use_rope
+        self.cap_logits = cap_logits
         
+        self.layer_norm = RMSNorm(d_model=d_model, device=device, dtype=dtype) if use_qk_norm else torch.nn.Identity()
+            
         self.qkv_proj = Linear(in_features=d_model, out_features=3*d_model, device=device, dtype=dtype)
         self.output_proj = Linear(in_features=d_model, out_features=d_model, device=device, dtype=dtype)
         
@@ -64,7 +67,11 @@ class MultiHeadSelfAttention(nn.Module):
             QK = self.rope(QK, token_positions)
         Q, K = QK[0], QK[1]
         V = qkv[2]
-        attn = scaled_dot_product_attention(Q, K, V, mask=mask)
+        
+        # We want to apply QK normalization
+        Q = self.layer_norm(Q)
+        K = self.layer_norm(K)
+        attn = scaled_dot_product_attention(Q, K, V, mask=mask, cap_logits=self.cap_logits)
         
         # Concatenate the heads
         attn = einx.id("... h sequence_length d_v -> ... sequence_length (h d_v)", attn, h=self.h)
@@ -74,13 +81,15 @@ class MultiHeadSelfAttention(nn.Module):
 class TransformerBlock(nn.Module):
     """One single layer in the LLM"""
     def __init__(self, d_model: int, num_heads: int, d_ff: int, max_seq_len: int, rope_theta: float,
-                use_rope=True, norm_type: str | None=None, ffn_type="swiglu", device=None, dtype=None):
+                use_rope=True, norm_type: str | None=None, use_qk_norm=False, cap_logits=False,
+                ffn_type="swiglu", device=None, dtype=None):
         super().__init__()
         
         self.norm_type = norm_type
         self.ln1 = RMSNorm(d_model=d_model, device=device, dtype=dtype)
-        self.attn = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads, rope_theta=rope_theta, 
-                                           max_seq_len=max_seq_len, use_rope=use_rope, device=device, dtype=dtype)
+        self.attn = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads, rope_theta=rope_theta, max_seq_len=max_seq_len, 
+                                           use_rope=use_rope, use_qk_norm=use_qk_norm, cap_logits=cap_logits,
+                                           device=device, dtype=dtype)
         self.ln2 = RMSNorm(d_model=d_model, device=device, dtype=dtype)
         
         if ffn_type == "swiglu":
@@ -112,7 +121,8 @@ class TransformerLM(nn.Module):
     """Full Model"""
     def __init__(self, vocab_size: int, context_length: int,
                 d_model: int, num_layers: int, num_heads: int, rope_theta: float, use_rope=True,
-                norm_style="pre", ffn_type="swiglu", d_ff: int | None=None, device=None, dtype=torch.bfloat16
+                norm_style="pre", ffn_type="swiglu", use_qk_norm=False, cap_logits=False,
+                d_ff: int | None=None, device=None, dtype=torch.bfloat16
                 ):
         super().__init__()
         
@@ -124,6 +134,8 @@ class TransformerLM(nn.Module):
             raise ValueError(f"Invalid ffn type: {ffn_type}")
         
         self.device = device
+        self.cap_logits = cap_logits
+        
         self.token_embeddings = Embedding(num_embeddings=vocab_size, embedding_dim=d_model, device=device, dtype=dtype)
         self.layers = nn.ModuleList([TransformerBlock(d_model=d_model,
                                                          num_heads=num_heads,
@@ -132,6 +144,8 @@ class TransformerLM(nn.Module):
                                                          rope_theta=rope_theta,
                                                          use_rope=use_rope,
                                                          norm_type=norm_style,
+                                                         use_qk_norm=use_qk_norm,
+                                                         cap_logits=cap_logits,
                                                          ffn_type=ffn_type,
                                                          device=device,
                                                          dtype=dtype) for _ in range(num_layers)])
@@ -155,6 +169,8 @@ class TransformerLM(nn.Module):
         
         # Get final logits
         x = self.ln_final(x)
+        if self.cap_logits:
+            x = 30 * torch.tanh(x / 30)
         return self.lm_head(x)
         
         

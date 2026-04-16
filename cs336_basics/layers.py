@@ -31,12 +31,18 @@ def scaled_dot_product_attention(Q: Float[Tensor, " ... queries d_k"],
                        K: Float[Tensor, " ... keys d_k"],
                        V: Float[Tensor, " ... keys d_v"],
                        mask: Bool[Tensor, " ... queries keys"] | None = None,
+                       cap_logits=False
                        ) -> Float[Tensor, " ... queries d_v"]:
     
     d_k = Q.shape[-1]
     attn = einx.dot("... queries [d_k], ... keys [d_k] -> ... queries keys", Q, K) / math.sqrt(d_k)
     # The mask is True where we want to attend --> so we need to invert it so it is True where we do not want
     attn.masked_fill_(~mask, -float("inf"))
+    
+    # Add logit softcapping: https://arxiv.org/pdf/2408.00118 
+    if cap_logits:
+        # Probably not a good idea to hardcode this but ehh
+        attn = 50 * torch.tanh(attn / 50)
     return einx.dot("... queries keys, ... keys d_v -> ... queries d_v", softmax(attn, dim=-1), V)
 
 

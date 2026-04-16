@@ -116,7 +116,7 @@ class AdamW(torch.optim.Optimizer):
                 t = state["t"]   
                 m = state["m"]
                 v = state["v"]
-                mantissa = state["mantissa"]
+                mantissa = state["weight_mantissa"]
                 
                 # Update Moment Estimates
                 m.mul_(beta1).add_(grad, alpha=1-beta1)
@@ -126,10 +126,10 @@ class AdamW(torch.optim.Optimizer):
                 # First, we want to make the data be 32 bits
                 # What we do is view the underlying data as 16 bits (unsighned)
                 # Then cast that to uint32 so we have a 32 bit contained
-                int32_weights = p.data.view(torch.uint16).to(torch.uint32)
+                int32_weights = p.data.view(torch.uint16).to(torch.int32)
                 
                 # Then we add the mantissa bits --> Now have a full fp32 weight
-                int32_weights = (int32_weights << 16) | mantissa
+                int32_weights = (int32_weights << 16) | mantissa.to(torch.int32)
                 fp32_weights = int32_weights.view(torch.float32)
                 
                 fp32_weights.sub_(fp32_weights, alpha=weight_decay*lr)          # Weight Decay
@@ -137,8 +137,8 @@ class AdamW(torch.optim.Optimizer):
                 fp32_weights.sub_(m / (torch.sqrt(v) + eps), alpha=a_t)
                 
                 # Now we want to move back the weights
-                int32_weights = fp32_weights.view(torch.uint32)
-                state["mantissa"] = int32_weights & 0xFFFF # Low 16 bits
+                int32_weights = fp32_weights.view(torch.int32)
+                state["weight_mantissa"] = int32_weights & 0xFFFF # Low 16 bits
                 bf16weight = (int32_weights >> 16).to(torch.uint16).view(torch.bfloat16)
                 p.data = bf16weight
                 
