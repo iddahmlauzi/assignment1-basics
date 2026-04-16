@@ -1,7 +1,11 @@
-from collections.abc import Callable, Iterable
-from typing import Optional
 import torch
 import math
+import einx
+from collections.abc import Callable, Iterable
+from typing import Optional
+from jaxtyping import Float
+from torch import Tensor
+
 
 
 def clip_gradients(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float, eps=1e-6) -> None:
@@ -145,38 +149,69 @@ class AdamW(torch.optim.Optimizer):
                 state["t"] += 1
                 
         return loss
+    
+    
+# I took these hardcoded coeeficients from the Polar Express Paper: https://arxiv.org/pdf/2505.16932 
+polar_express_coefficients = [
+(8.28721201814563, -23.595886519098837, 17.300387312530933),
+(4.107059111542203, -2.9478499167379106, 0.5448431082926601),
+(3.9486908534822946, -2.908902115962949, 0.5518191394370137),
+(3.3184196573706015, -2.488488024314874, 0.51004894012372),
+(2.300652019954817, -1.6689039845747493, 0.4188073119525673)]
 
+def polar_express(G: Float[Tensor, "..."], eps=1e-2):
+    # Okay so technically this should only work for 2D+ matrices
+    if G.ndim() < 2:
+        raise ValueError(f"Does not accept 1D tensors but got a gradient of shape {G.shape}")
+    
+    # Reduces memory cost when calculating X^TX
+    if G.shape[-2] > G.shape[-1]:
+        G = G.transpose(-2, -1)
+    
+    X = G / (G.norm(p='fro') + eps)
+    n = X.shape[-2] # This will be the dimension of the square matrix when we say X^T
+    I = torch.eye(n, dtype=X.dtype, device=X.device)  # This is a square matrix of n * n
+    for a, b, c in polar_express_coefficients:
+        S = einx.dot("... i [j], ... i [j] -> ... i i", X, X)
+        intermediate = a * I + S @ (b * I + c * S)
+        X = intermediate @ X
+    
+    if G.shape[-2] > G.shape[-1]:
+        X = X.transpose(-2, -1)
+        
+    return X
+    
 
 # Figure it our here: https://docs.pytorch.org/docs/stable/generated/torch.optim.Muon.html 
 # Also look into Polar Express 
 # And NorMuon
 # https://www.youtube.com/watch?v=-Cto66pAUXQ 
-# class Muon(torch.optim.Optimizer):
-#     def __init__(self, params, lr=1e-3, momentum=0.95, weight_decay=1e-2, device=None, dtype=None):
-#         defaults = {
-#             "lr": lr,
-#             "momentum": momentum,
-#             "weight_decay": weight_decay,
-#             "device": device,
-#             "dtype": dtype
-#         }
-#         super().__init__(params, defaults)
+class Muon(torch.optim.Optimizer):
+    def __init__(self, params, lr=1e-3, momentum=0.95, weight_decay=1e-2, device=None, dtype=None):
+        defaults = {
+            "lr": lr,
+            "momentum": momentum,
+            "weight_decay": weight_decay,
+            "device": device,
+            "dtype": dtype
+        }
+        super().__init__(params, defaults)
     
-#     def step(self, closure: Optional[Callable] = None):
-#         loss = None if closure is None else closure()
-#         for group in self.param_groups:
-#             lr = group["lr"]
-#             momentum = group["momentum"]
-#             weight_decay = group["weight_decay"]
-#             device = group["device"]
-#             dtype = group["dtype"]
+    def step(self, closure: Optional[Callable] = None):
+        loss = None if closure is None else closure()
+        for group in self.param_groups:
+            lr = group["lr"]
+            momentum = group["momentum"]
+            weight_decay = group["weight_decay"]
+            device = group["device"]
+            dtype = group["dtype"]
             
-#             for p in group["params"]:
-#                 if p.grad is None:
-#                     continue
+            for p in group["params"]:
+                if p.grad is None:
+                    continue
                 
-#                 grad = p.grad.data
-#                 state = self.state[p]
+                grad = p.grad.data
+                state = self.state[p]
                 
                 
                 

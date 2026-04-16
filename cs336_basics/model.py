@@ -46,7 +46,7 @@ class MultiHeadSelfAttention(nn.Module):
             
         self.qkv_proj = Linear(in_features=d_model, out_features=3*d_model, device=device, dtype=dtype)
         # TODO: Probably don't hardcode this --> just too lazy to move it rn
-        self.output_proj = Linear(in_features=d_model, out_features=d_model, zero_init=True, device=device, dtype=dtype)
+        self.output_proj = Linear(in_features=d_model, out_features=d_model, zero_init=False, device=device, dtype=dtype)
         
         self.rope = RotaryPositionalEmbedding(theta=rope_theta, d_k=self.d_k, max_seq_len=max_seq_len, device=device, dtype=dtype)
         
@@ -122,7 +122,7 @@ class TransformerLM(nn.Module):
     """Full Model"""
     def __init__(self, vocab_size: int, context_length: int,
                 d_model: int, num_layers: int, num_heads: int, rope_theta: float, use_rope=True,
-                norm_style="pre", ffn_type="swiglu", use_qk_norm=False, cap_logits=False,
+                norm_style="pre", ffn_type="swiglu", use_qk_norm=False, cap_logits=False, add_embedding_residual=False,
                 d_ff: int | None=None, device=None, dtype=torch.bfloat16
                 ):
         super().__init__()
@@ -136,6 +136,7 @@ class TransformerLM(nn.Module):
         
         self.device = device
         self.cap_logits = cap_logits
+        self.add_embedding_residual = add_embedding_residual
         
         self.token_embeddings = Embedding(num_embeddings=vocab_size, embedding_dim=d_model, device=device, dtype=dtype)
         self.layers = nn.ModuleList([TransformerBlock(d_model=d_model,
@@ -151,14 +152,17 @@ class TransformerLM(nn.Module):
                                                          device=device,
                                                          dtype=dtype) for _ in range(num_layers)])
         self.ln_final = RMSNorm(d_model=d_model, device=device, dtype=dtype)
-        # TODO: Also don't hardcode this
-        self.lm_head = Linear(in_features=d_model, out_features=vocab_size, zero_init=True, device=device, dtype=dtype)
+        self.lm_head = Linear(in_features=d_model, out_features=vocab_size, zero_init=False, device=device, dtype=dtype)
+        
+        # Initialize this to zero which means we start off by not considering the new embedding
+        self.embedding_residual_weight = nn.Parameter(torch.zeros(d_model)) if self.add_embedding_residual else None
         
     def forward(self, input: Int[Tensor, " batch_size sequence_length"]) ->  Float[Tensor, " batch_size sequence_length vocab_size"]:
         
         
         # Initial Embeddings
-        x = self.token_embeddings(input)
+        initial_embeddings = self.token_embeddings(input)
+        x = initial_embeddings
         
         B, S = input.shape
         # We will reuse these for every layer
@@ -167,13 +171,17 @@ class TransformerLM(nn.Module):
         
         # Pass through Transformer layers
         for layer in self.layers:
+            if self.embedding_residual_weight is not None:
+                x = x + self.embedding_residual_weight * initial_embeddings
             x = layer(x, mask=mask, token_positions=token_positions)
         
         # Get final logits
+        # Oh wait, I was doing this in the wrong place
         x = self.ln_final(x)
+        logits = self.lm_head(x)
         if self.cap_logits:
-            x = 30 * torch.tanh(x / 30)
-        return self.lm_head(x)
+            logits = 15 * torch.tanh(logits / 15)
+        return logits
         
         
         

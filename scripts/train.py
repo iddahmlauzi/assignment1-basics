@@ -13,7 +13,7 @@ wandb_secret = modal.Secret.from_name("wandb")
 
 @app.function(image=build_image(), 
               volumes=VOLUME_MOUNTS, 
-              max_containers=3,
+              max_containers=1,
               gpu="B200", 
               secrets=[wandb_secret],
               timeout=2700)
@@ -52,6 +52,8 @@ def main(config: str):
     parser.add_argument("--use_rope", type=bool, default=True)
     parser.add_argument("--use_qk_norm", type=bool, default=True)
     parser.add_argument("--ffn_type", type=str, default="swiglu")
+    parser.add_argument("--add_embedding_residual", type=bool, default=True)
+    
     
     # ADAM Optimizer Hyperparameters: DEFAULTS DONE
     parser.add_argument("--beta1", type=float, default=0.9)

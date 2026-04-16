@@ -4,10 +4,12 @@ d_model: 1024
 rope_theta: 10000
 num_layers: 13
 num_heads: 8
-batch_size: 256
-num_steps: 11000
+batch_size: 192
+num_steps: 10000
 save_steps: 5000
 log_steps: 100
+use_z_loss: False
+add_embedding_residual: False
 
 data_path: "/root/data/openwebtext-train-encoded.bin"
 val_path: "/root/data/openwebtext-valid-encoded.bin"
