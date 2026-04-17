@@ -107,7 +107,7 @@ def train(args):
                            eps=args.adam_eps, weight_decay=args.weight_decay, device=args.device)
         
         optimizer2 = Muon(params=muon_params, lr=args.max_learning_rate, momentum=args.muon_momentum, 
-                          nesterov=args.use_nesterov, device=args.device, dtype=args.dtype)
+                          weight_decay=args.weight_decay, nesterov=args.use_nesterov, device=args.device, dtype=args.dtype)
         optimizers = [optimizer1, optimizer2]
                 
     else:
@@ -129,7 +129,7 @@ def train(args):
     for t in range(iteration, args.num_steps):
         
         for optimizer in optimizers:
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
         
         # Sample a batch
         x, y = get_batch(train_dataset, batch_size=args.batch_size, 
@@ -148,10 +148,16 @@ def train(args):
                                        min_learning_rate=args.min_learning_rate, 
                                        warmup_iters=args.warmup_iters,
                                        cosine_cycle_iters=args.cosine_cycle_iters)
-        for optimizer in optimizers:
-            for group in optimizer.param_groups:
-                group['lr'] = learning_rate
-            optimizer.step()
+        
+        # A bit of a hacky way to try and keep Muon LR Aggressive
+        for group in optimizers[0].param_groups:
+            group['lr'] = learning_rate * 0.2
+        
+        for group in optimizers[1].param_groups:
+            group['lr'] = learning_rate
+        
+        optimizers[0].step()
+        optimizers[1].step()
         
         # Save the checkpoint
         if t > 0 and t % args.save_steps == 0:

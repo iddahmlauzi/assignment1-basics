@@ -21,6 +21,7 @@ def train_remote(args):
     args = argparse.Namespace(**args)
     device = args.device or ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
     args.device = device
+    args.dtype = torch.bfloat16
     
     wandb.init(project="CS336-Assignment1", 
             name=args.run_name,

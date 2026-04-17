@@ -123,7 +123,7 @@ class TransformerLM(nn.Module):
     def __init__(self, vocab_size: int, context_length: int,
                 d_model: int, num_layers: int, num_heads: int, rope_theta: float, use_rope=True,
                 norm_style="pre", ffn_type="swiglu", use_qk_norm=False, cap_logits=False, add_embedding_residual=False,
-                d_ff: int | None=None, device=None, dtype=torch.bfloat16
+                d_ff: int | None=None, device=None, dtype=None
                 ):
         super().__init__()
         
@@ -131,8 +131,6 @@ class TransformerLM(nn.Module):
             d_ff = round(8/3 * d_model / 64) * 64
         elif d_ff is None and ffn_type == "silu":
             d_ff = round(4 * d_model / 64) * 64
-        else:
-            raise ValueError(f"Invalid ffn type: {ffn_type}")
         
         self.device = device
         self.cap_logits = cap_logits
@@ -180,7 +178,7 @@ class TransformerLM(nn.Module):
         x = self.ln_final(x)
         logits = self.lm_head(x)
         if self.cap_logits:
-            logits = 15 * torch.tanh(logits / 15)
+            logits = 30 * torch.tanh(logits / 30)
         return logits
         
         
