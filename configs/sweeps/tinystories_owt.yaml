@@ -2,5 +2,5 @@ base_config: "configs/tinystories_owt.yaml"
 group_name: "owt_with_same_architecture_as_ts"
 
 parameters:
-  max_learning_rate: [0.01, 0.001, 0.005]
-  batch_size: [128, 256, 512]
+  max_learning_rate: [0.005]
+  batch_size: [512]

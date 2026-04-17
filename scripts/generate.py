@@ -14,7 +14,7 @@ wandb_secret = modal.Secret.from_name("wandb")
     volumes=VOLUME_MOUNTS, 
     gpu="B200", 
     secrets=[wandb_secret],
-    scaledown_window=300 
+    scaledown_window=3000 
 )
 class Model:
     model_path: str = modal.parameter()
@@ -55,7 +55,7 @@ class Model:
         )
 
 @app.local_entrypoint()
-def main(model_path: str = '/root/data/checkpoints/max_learning_rate_0.008/final_model.pt'):
+def main(model_path: str = '/root/data/checkpoints/max_learning_rate_0.005_batch_size_512/final_model.pt'):
     
     m = Model(model_path=model_path)
     print("Hello! This is Iddah's trained model. Type your prompt to begin")

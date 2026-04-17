@@ -2,13 +2,13 @@ vocab_size: 32000
 context_length: 512
 d_model: 1024
 rope_theta: 10000
-num_layers: 16
+num_layers: 13
 num_heads: 8
-batch_size: 128
-num_steps: 10000
-save_steps: 5000
+batch_size: 256
+num_steps: 8000
+save_steps: 10000
 log_steps: 100
-use_z_loss: False
+use_z_loss: True
 add_embedding_residual: True
 use_muon: True
 

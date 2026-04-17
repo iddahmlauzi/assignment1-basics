@@ -123,7 +123,7 @@ class TransformerLM(nn.Module):
     def __init__(self, vocab_size: int, context_length: int,
                 d_model: int, num_layers: int, num_heads: int, rope_theta: float, use_rope=True,
                 norm_style="pre", ffn_type="swiglu", use_qk_norm=False, cap_logits=False, add_embedding_residual=False,
-                d_ff: int | None=None, device=None, dtype=None
+                d_ff: int | None=None, device=None, dtype=torch.bfloat16
                 ):
         super().__init__()
         
@@ -176,6 +176,7 @@ class TransformerLM(nn.Module):
         # Get final logits
         # Oh wait, I was doing this in the wrong place
         x = self.ln_final(x)
+        # logits = einx.dot("d_out d_in, ... d_in -> ... d_out", self.token_embeddings.weight, x)
         logits = self.lm_head(x)
         if self.cap_logits:
             logits = 30 * torch.tanh(logits / 30)

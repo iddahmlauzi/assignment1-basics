@@ -73,7 +73,7 @@ class Embedding(nn.Module):
         super().__init__()
         
         embedding_tensor = torch.empty(num_embeddings, embedding_dim, device=device, dtype=dtype)
-        nn.init.trunc_normal_(embedding_tensor, a=-3, b=3)
+        nn.init.trunc_normal_(embedding_tensor, std=1, a=-3, b=3)
         self.weight = nn.Parameter(embedding_tensor)
     
     def forward(self, token_ids: Int[Tensor, " ..."]) -> Float[Tensor, " ... d_model"]:

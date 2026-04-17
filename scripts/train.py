@@ -142,7 +142,7 @@ def main(config: str):
             args["num_steps"] = round(args["total_tokens_processed"] / (args["batch_size"] * args["context_length"]))
             
         # Calculate the cosine lr schedule stuff dynamically too
-        # Default warmup_iters to be 2.5% of max iters
+        # Default warmup_iters to be 5% of max iters
         args["warmup_iters"] = round(0.025 * args["num_steps"])
         # So the cosine schedule reaches min 
         args["cosine_cycle_iters"] = args["num_steps"]

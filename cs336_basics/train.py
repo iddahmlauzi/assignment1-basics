@@ -51,6 +51,8 @@ def train(args):
     
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
+    torch.set_float32_matmul_precision('high')
+    torch.backends.cudnn.benchmark = True
     
     # 1. Load training and validation data
     if not os.path.exists(args.data_path):
@@ -108,7 +110,7 @@ def train(args):
         
         optimizer2 = Muon(params=muon_params, lr=args.max_learning_rate, momentum=args.muon_momentum, 
                           weight_decay=args.weight_decay, nesterov=args.use_nesterov, device=args.device, dtype=args.dtype)
-        optimizers = [optimizer1, optimizer2]
+        optimizers = [optimizer2, optimizer1]
                 
     else:
         optimizer = AdamW(params=model.parameters(), lr=args.max_learning_rate, betas=(args.beta1, args.beta2),
@@ -127,10 +129,7 @@ def train(args):
     print("Beginning Training....")
     start_time = time.time()
     for t in range(iteration, args.num_steps):
-        
-        for optimizer in optimizers:
-            optimizer.zero_grad(set_to_none=True)
-        
+                
         # Sample a batch
         x, y = get_batch(train_dataset, batch_size=args.batch_size, 
                          context_length=args.context_length, device=args.device)
@@ -149,15 +148,13 @@ def train(args):
                                        warmup_iters=args.warmup_iters,
                                        cosine_cycle_iters=args.cosine_cycle_iters)
         
-        # A bit of a hacky way to try and keep Muon LR Aggressive
-        for group in optimizers[0].param_groups:
-            group['lr'] = learning_rate * 0.2
+        # Update each optimizer
+        for optimizer in optimizers:
+            for group in optimizer.param_groups:
+                group['lr'] = learning_rate
+            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
         
-        for group in optimizers[1].param_groups:
-            group['lr'] = learning_rate
-        
-        optimizers[0].step()
-        optimizers[1].step()
         
         # Save the checkpoint
         if t > 0 and t % args.save_steps == 0:

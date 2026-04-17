@@ -3,5 +3,6 @@ group_name: "leaderboard"
 
 parameters:
   max_learning_rate: [0.002]
+  use_z_loss: [True]
 
 

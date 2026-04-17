@@ -77,62 +77,6 @@ class SGD(torch.optim.Optimizer):
         return loss
     
     
-class AdamW(torch.optim.Optimizer):
-    def __init__(self, params, betas=(0.9, 0.999), lr=1e-3, weight_decay=1e-2, eps=1e-8, device=None, dtype=None):
-        if lr < 0:
-            raise ValueError(f"Invalid Learning rate: {lr}")
-        defaults = {
-            "lr": lr,
-            "betas": betas,
-            "eps": eps,
-            "weight_decay": weight_decay,
-            "device": device,
-            "dtype": dtype,
-        }
-        super().__init__(params, defaults)
-        
-    def step(self, closure: Optional[Callable] = None):
-        loss = None if closure is None else closure()
-        for group in self.param_groups:
-            lr = group["lr"]
-            beta1, beta2 = group["betas"]
-            eps = group["eps"]
-            weight_decay = group["weight_decay"]
-            device = group["device"]
-            dtype = group["dtype"]
-            
-            for p in group["params"]:
-                if p.grad is None:
-                    continue
-                
-                grad = p.grad.data 
-                state = self.state[p]
-                
-                # Initialize State
-                if "t" not in state:
-                    state["t"] = 1
-                    state["m"] = torch.zeros(grad.shape, device=device, dtype=dtype)
-                    state["v"] = torch.zeros(grad.shape, device=device, dtype=dtype)
-                
-                t = state["t"]   
-                m = state["m"]
-                v = state["v"]
-                
-                # Update Moment Estimates
-                m.mul_(beta1).add_(grad, alpha=1-beta1)
-                v.mul_(beta2).add_(grad**2, alpha=1-beta2)
-                
-                # Update parameters
-                p.data.sub_(p.data, alpha=weight_decay*lr)          # Weight Decay
-                a_t = lr * math.sqrt(1 - beta2**t) / (1 - beta1**t) # Adjusted learning rate for iteration t
-                p.data.sub_(m / (torch.sqrt(v) + eps), alpha=a_t)
-                
-                state["t"] += 1
-                
-        return loss
-    
-
-# This is what I used in leaderboard but it breaks the normal Adam Tests
 # class AdamW(torch.optim.Optimizer):
 #     def __init__(self, params, betas=(0.9, 0.999), lr=1e-3, weight_decay=1e-2, eps=1e-8, device=None, dtype=None):
 #         if lr < 0:
@@ -169,42 +113,98 @@ class AdamW(torch.optim.Optimizer):
 #                     state["t"] = 1
 #                     state["m"] = torch.zeros(grad.shape, device=device, dtype=dtype)
 #                     state["v"] = torch.zeros(grad.shape, device=device, dtype=dtype)
-#                     # Okay so we will store the extra mantissa bits for the weight here
-#                     # So the weights will technically be in fp32 
-#                     state["weight_mantissa"] = torch.zeros(grad.shape, device=device, dtype=torch.uint16)
                 
 #                 t = state["t"]   
 #                 m = state["m"]
 #                 v = state["v"]
-#                 mantissa = state["weight_mantissa"]
                 
 #                 # Update Moment Estimates
 #                 m.mul_(beta1).add_(grad, alpha=1-beta1)
 #                 v.mul_(beta2).add_(grad**2, alpha=1-beta2)
                 
 #                 # Update parameters
-#                 # First, we want to make the data be 32 bits
-#                 # What we do is view the underlying data as 16 bits (unsighned)
-#                 # Then cast that to uint32 so we have a 32 bit contained
-#                 int32_weights = p.data.view(torch.uint16).to(torch.int32)
-                
-#                 # Then we add the mantissa bits --> Now have a full fp32 weight
-#                 int32_weights = (int32_weights << 16) | mantissa.to(torch.int32)
-#                 fp32_weights = int32_weights.view(torch.float32)
-                
-#                 fp32_weights.sub_(fp32_weights, alpha=weight_decay*lr)          # Weight Decay
+#                 p.data.sub_(p.data, alpha=weight_decay*lr)          # Weight Decay
 #                 a_t = lr * math.sqrt(1 - beta2**t) / (1 - beta1**t) # Adjusted learning rate for iteration t
-#                 fp32_weights.sub_(m / (torch.sqrt(v) + eps), alpha=a_t)
-                
-#                 # Now we want to move back the weights
-#                 int32_weights = fp32_weights.view(torch.int32)
-#                 state["weight_mantissa"] = int32_weights & 0xFFFF # Low 16 bits
-#                 bf16weight = (int32_weights >> 16).to(torch.uint16).view(torch.bfloat16)
-#                 p.data = bf16weight
+#                 p.data.sub_(m / (torch.sqrt(v) + eps), alpha=a_t)
                 
 #                 state["t"] += 1
                 
 #         return loss
+    
+
+# This is what I used in leaderboard but it breaks the normal Adam Tests
+class AdamW(torch.optim.Optimizer):
+    def __init__(self, params, betas=(0.9, 0.999), lr=1e-3, weight_decay=1e-2, eps=1e-8, device=None, dtype=None):
+        if lr < 0:
+            raise ValueError(f"Invalid Learning rate: {lr}")
+        defaults = {
+            "lr": lr,
+            "betas": betas,
+            "eps": eps,
+            "weight_decay": weight_decay,
+            "device": device,
+            "dtype": dtype,
+        }
+        super().__init__(params, defaults)
+        
+    def step(self, closure: Optional[Callable] = None):
+        loss = None if closure is None else closure()
+        for group in self.param_groups:
+            lr = group["lr"]
+            beta1, beta2 = group["betas"]
+            eps = group["eps"]
+            weight_decay = group["weight_decay"]
+            device = group["device"]
+            dtype = group["dtype"]
+            
+            for p in group["params"]:
+                if p.grad is None:
+                    continue
+                
+                grad = p.grad.data 
+                state = self.state[p]
+                
+                # Initialize State
+                if "t" not in state:
+                    state["t"] = 1
+                    state["m"] = torch.zeros(grad.shape, device=device, dtype=dtype)
+                    state["v"] = torch.zeros(grad.shape, device=device, dtype=dtype)
+                    # Okay so we will store the extra mantissa bits for the weight here
+                    # So the weights will technically be in fp32 
+                    state["weight_mantissa"] = torch.zeros(grad.shape, device=device, dtype=torch.uint16)
+                
+                t = state["t"]   
+                m = state["m"]
+                v = state["v"]
+                mantissa = state["weight_mantissa"]
+                
+                # Update Moment Estimates
+                m.mul_(beta1).add_(grad, alpha=1-beta1)
+                v.mul_(beta2).add_(grad**2, alpha=1-beta2)
+                
+                # Update parameters
+                # First, we want to make the data be 32 bits
+                # What we do is view the underlying data as 16 bits (unsighned)
+                # Then cast that to uint32 so we have a 32 bit contained
+                int32_weights = p.data.view(torch.uint16).to(torch.int32)
+                
+                # Then we add the mantissa bits --> Now have a full fp32 weight
+                int32_weights = (int32_weights << 16) | mantissa.to(torch.int32)
+                fp32_weights = int32_weights.view(torch.float32)
+                
+                fp32_weights.sub_(fp32_weights, alpha=weight_decay*lr)          # Weight Decay
+                a_t = lr * math.sqrt(1 - beta2**t) / (1 - beta1**t) # Adjusted learning rate for iteration t
+                fp32_weights.sub_(m / (torch.sqrt(v) + eps), alpha=a_t)
+                
+                # Now we want to move back the weights
+                int32_weights = fp32_weights.view(torch.int32)
+                state["weight_mantissa"] = int32_weights & 0xFFFF # Low 16 bits
+                bf16weight = (int32_weights >> 16).to(torch.uint16).view(torch.bfloat16)
+                p.data = bf16weight
+                
+                state["t"] += 1
+                
+        return loss
     
     
 # I took these hardcoded coeeficients from the Polar Express Paper: https://arxiv.org/pdf/2505.16932 
@@ -282,12 +282,13 @@ class Muon(torch.optim.Optimizer):
                 
                 # Update the gradient buffer
                 m.mul_(momentum).add_(grad)
+                gradient_buffer = m
                 
                 if nesterov:
-                    m.mul_(momentum).add_(grad)
+                    gradient_buffer = gradient_buffer * momentum + grad
                     
                 # Then we want to orthogonalize the gradient
-                O_t = polar_express(grad)
+                O_t = polar_express(gradient_buffer)
                 
                 
                 # Update parameters
